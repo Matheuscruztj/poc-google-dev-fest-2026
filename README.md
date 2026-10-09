@@ -4,20 +4,83 @@
 
 Aplicação demonstrativa que sugere palestras, responde dúvidas com fontes e simula reservas. Todos os dados são fictícios. O MVP atual funciona em modo offline determinístico e não chama Gemini nem qualquer serviço externo.
 
-## Executar localmente
+## Requisitos
 
-Requisitos: Docker Compose v2. O SQLite persistente é criado no volume `eventops-data`; `app/data/sessions.json` é somente o seed versionado, carregado na inicialização configurada. As consultas da agenda vêm do SQLite.
+Para o caminho mais simples, instale Docker Engine ou Docker Desktop com Docker Compose v2. Para desenvolver sem containers, use Python 3.11 e `make`. Node 24.18.0 e Playwright Chromium são necessários somente para os checks completos; a aplicação em si não precisa deles.
+
+## Início rápido com Docker
+
+Na raiz do projeto:
 
 ```bash
 cp .env.example .env
 docker compose up --build -d
+docker compose ps
 ```
 
-Abra <http://127.0.0.1:8000>. Para parar, rode `docker compose down`; o volume persiste. Para iniciar Ollama local com GPU NVIDIA/CUDA, instale NVIDIA Container Toolkit, defina `EVENTOPS_AGENT_MODE=local` em `.env` e rode `docker compose -f compose.yaml -f compose.gpu.yaml --profile gpu up --build -d`; baixe o modelo uma vez com `docker compose -f compose.yaml -f compose.gpu.yaml --profile gpu run --rm model-init`. Os pesos ficam em volume próprio. Sem GPU, use `docker compose --profile local-model up -d` e o Ollama executará em CPU. O modo padrão `offline` não inicia nem baixa modelo algum.
+Abra <http://127.0.0.1:8000>. O modo padrão é offline: não requer chave Google, Ollama ou acesso a serviços externos. SQLite e dados de demonstração ficam no volume `eventops-data` e sobrevivem a reinicializações.
 
-Para trocar para Gemini via API, defina `EVENTOPS_AGENT_MODE=live` e `GOOGLE_API_KEY` em `.env` antes de iniciar. Esse caminho usa um serviço externo e pode consumir quota. A aplicação, contrato do agente e ferramentas de domínio permanecem os mesmos.
+Comandos úteis:
 
-Veja [operação local](docs/operacao-local.md) para reset, diagnóstico e instalação de dependências. O setup Python direto permanece disponível para desenvolvimento sem Docker (`make setup`, `make run`). Dependências Python são fixadas nos locks SHA-256 em `requirements/`.
+```bash
+docker compose logs -f app  # acompanhar logs; Ctrl+C sai dos logs
+docker compose down         # parar, preservando os dados
+docker compose down -v      # parar e apagar banco e pesos locais
+```
+
+### Executar com Python (desenvolvimento)
+
+Crie o ambiente e instale as dependências travadas para desenvolvimento e agente:
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+make setup
+```
+
+Copie a configuração de exemplo e carregue-a no shell. O `make run` não lê o arquivo `.env` automaticamente:
+
+```bash
+cp .env.example .env
+set -a
+source .env
+set +a
+make run
+```
+
+Abra <http://127.0.0.1:8000> e use `Ctrl+C` para parar. `make setup` valida Python 3.11 e instala os arquivos com hashes SHA-256 em `requirements/`. No PowerShell, use Docker Compose ou carregue as variáveis de ambiente pelo mecanismo do seu shell.
+
+Para executar a suíte completa de verificações, instale Node 24.18.0, as dependências JavaScript e Chromium do Playwright:
+
+```bash
+npm ci
+python -m playwright install --with-deps chromium  # Linux
+make check
+```
+
+Em macOS/Windows, instale o navegador com `python -m playwright install chromium`. `make check` roda lint, typecheck, testes, E2E e evals offline. `make pre-push` também constrói o pacote e executa o smoke com Docker Compose.
+
+### Modos do agente
+
+`EVENTOPS_MODE` controla o modo da aplicação e permanece `offline`. `EVENTOPS_AGENT_MODE` escolhe o provider do chat:
+
+- `offline` (padrão): respostas determinísticas, sem baixar modelo nem chamar APIs.
+- `local`: usa Ollama. Defina `EVENTOPS_AGENT_MODE=local` no `.env`. Para CPU, inicie a aplicação e Ollama e baixe o modelo:
+
+  ```bash
+  docker compose --profile local-model up --build -d app ollama
+  docker compose --profile local-model run --rm model-init
+  ```
+
+  Para NVIDIA/CUDA, instale NVIDIA Container Toolkit e use o arquivo base junto com o override:
+
+  ```bash
+  docker compose -f compose.yaml -f compose.gpu.yaml --profile gpu up --build -d app ollama
+  docker compose -f compose.yaml -f compose.gpu.yaml --profile gpu run --rm model-init
+  ```
+- `live`: usa Gemini via Google ADK. A imagem Docker Compose atual não inclui esse extra opcional; use o ambiente Python instalado por `make setup`, carregue `EVENTOPS_AGENT_MODE=live` e `GOOGLE_API_KEY` no shell e rode `make run`. Chamadas live usam serviço externo e podem consumir quota; não coloque a chave no Git.
+
+O seletor da interface permite escolher Agente único ou Coordenador + especialistas no modo offline. O provider live da arquitetura multi ainda não está configurado. Para instruções de reset, banco, diagnóstico e avaliação, consulte [operação local](docs/operacao-local.md). Dependências Python são fixadas nos locks SHA-256 em `requirements/`.
 
 ### Reset local seguro
 
@@ -45,12 +108,14 @@ Não há login real, reserva real, pagamentos nem calendário de terceiros. Agen
 make lint
 make typecheck
 make test
+make e2e
 make eval-offline
+make eval-compare
 make build
 make check
 ```
 
-`make pre-push` executa todos os quality gates, build do pacote e smoke Docker Compose; instale Docker Desktop/Engine para esse último. O comando completo também exige Node 24.18.0 (via `.node-version`) e Chromium do Playwright. `npm ci` instala Husky e configura o hook versionado em `.husky/pre-push`, que bloqueia o push se `make pre-push` falhar. Instale também as dependências do Chromium com `python -m playwright install --with-deps chromium`. GitHub Actions executa o mesmo alvo em push e pull request e armazena relatórios. `make e2e` usa banco temporário. `make build` gera sdist/wheel e valida os recursos; `make eval-offline` avalia os 40 casos determinísticos, incluindo replay multi-turno de memória/contexto OWASP LLM/Agentic.
+`make check` reúne os gates offline. `make pre-push` também constrói o pacote e executa o smoke com Docker Compose, então requer Docker Engine/Desktop. Para lint e E2E, siga a instalação de Node 24.18.0 e Playwright Chromium descrita acima. `npm ci` instala as dependências JavaScript e prepara Husky; o hook `.husky/pre-push` chama `make pre-push`. GitHub Actions executa o mesmo alvo em push e pull request. `make e2e` usa banco temporário; `make eval-offline` avalia 40 casos, incluindo replay multi-turno de contexto.
 
 ### Diagnóstico local
 
@@ -59,7 +124,13 @@ make check
 - **Chromium não abre ou falta biblioteca:** execute `python -m playwright install --with-deps chromium` em Linux ou `python -m playwright install chromium` nos demais ambientes. A aplicação em runtime não precisa de Node nem do navegador.
 - **Catálogo inválido/incompatível:** a inicialização falha com mensagem explícita se os oito documentos FAQ previstos estiverem ausentes/alterados, ou se o banco existente divergir do catálogo enquanto houver reservas.
 
-Para conversar com o agente, a seção **Converse com o guia** usa o provider offline por padrão. O provider `local` usa Ollama no serviço Compose; `live` usa ADK e Gemini por API. Instale a integração travada com `python -m pip install --require-hashes -r requirements/py311-agent.txt` e `python -m pip install --no-deps -e .`; configure `GOOGLE_API_KEY` e `EVENTOPS_AGENT_MODE=live` antes de iniciar `make run`. A página identifica o chat live. Uma chamada live usa serviço externo e pode consumir quota. Para executar o protocolo live de três rodadas (120 execuções): `make eval-live LIVE_CONFIRM=1`.
+Para executar evals live, ative o ambiente Python instalado por `make setup` e exporte `GOOGLE_API_KEY` e `EVENTOPS_AGENT_MODE=live`. O protocolo requer confirmação explícita e roda três rodadas, com até 123 chamadas por arquitetura:
+
+```bash
+make eval-live LIVE_CONFIRM=1
+```
+
+Essa execução usa Gemini e pode consumir quota. A avaliação da arquitetura multi live ainda não está habilitada.
 
 ## Plano completo
 
