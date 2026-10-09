@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from contextlib import AsyncExitStack
 from pathlib import Path
@@ -23,10 +24,23 @@ class ScheduleMCPClient:
         timeout_seconds: float = 3.0,
         project_root: Path | None = None,
         server_module: str = "mcp_server.server",
+        database: Path | str | None = None,
+        seed_catalog: bool = True,
     ) -> None:
         self.timeout_seconds = timeout_seconds
         self.project_root = project_root or Path(__file__).resolve().parents[1]
         self.server_module = server_module
+        target = str(
+            database
+            or os.getenv("EVENTOPS_DATABASE_URL")
+            or os.getenv("EVENTOPS_DATABASE")
+            or "var/eventops.sqlite3"
+        )
+        if str(target).startswith(("postgresql://", "postgres://")):
+            self.server_env = {"EVENTOPS_DATABASE_URL": str(target)}
+        else:
+            self.server_env = {"EVENTOPS_DATABASE": str(Path(target).expanduser().resolve())}
+        self.server_env["EVENTOPS_SEED_CATALOG"] = "true" if seed_catalog else "false"
         self._stack: AsyncExitStack | None = None
         self._session: ClientSession | None = None
 
@@ -38,6 +52,7 @@ class ScheduleMCPClient:
             command=sys.executable,
             args=["-m", self.server_module],
             cwd=str(self.project_root),
+            env=self.server_env,
         )
         try:
             async with asyncio.timeout(self.timeout_seconds):

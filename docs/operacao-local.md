@@ -26,6 +26,20 @@ O smoke de `make build` instala o wheel fora do checkout, inicializa o banco a p
 
 ## Agentes e MCP local
 
+O servidor MCP recebe da API o caminho absoluto SQLite ou `EVENTOPS_DATABASE_URL`
+e consulta o mesmo banco em cada chamada. Na execução manual, essas variáveis
+selecionam o banco; `EVENTOPS_SEED_CATALOG=true` importa o seed apenas se vazio.
+Na execução iniciada pela API, MCP não faz seed. `make eval-compare` usa banco
+temporário próprio para não depender das alterações do catálogo da demo.
+
+O histórico do chat fica no banco, limitado a quatro turnos por cookie, e
+continua disponível após reiniciar a aplicação. Chamadas simultâneas com o mesmo
+cookie recebem 409 `chat_busy`; aguarde a resposta antes de tentar novamente.
+Em crash, o bloqueio expira em 120 s. Sessões de navegador expiram em 24 h;
+criar uma nova sessão limpa identidades expiradas e seus históricos/leases,
+preservando reservas. Bancos legados sem expiração exigem um cookie novo após
+migração. Consulte o controle de [pendências](pendencias.md).
+
 O chat usa **Agente único** por padrão. O seletor da página também permite **Coordenador + especialistas**, disponível no modo offline. O especialista de agenda usa um servidor MCP local via stdio; o processo é iniciado e encerrado por solicitação. Para inspecionar manualmente o servidor, execute `python -m mcp_server.server` em um terminal: stdout fica reservado ao protocolo MCP e os logs vão para stderr. Instale o extra travado do agente/MCP com `python -m pip install --require-hashes -r requirements/py311-agent.txt`.
 
 `make eval-compare` executa três rodadas pareadas sobre os 40 casos, reproduzindo todas as mensagens de chat de cada caso e salva relatório em `reports/<run_id>/`. O experimento atual compara tools internas do single com MCP stdio no multi e rotula essa diferença no manifesto. Ele é offline e não aprova G4 live. A arquitetura multi live permanece desativada até receber seus providers ADK e passar pelo protocolo com Gemini.

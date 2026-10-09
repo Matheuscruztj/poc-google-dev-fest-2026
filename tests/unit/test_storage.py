@@ -139,6 +139,20 @@ def test_missing_demo_session_is_reported_without_database_lookup(tmp_path):
     assert storage.demo_session_context(None, 1) is None
 
 
+def test_legacy_browser_sessions_without_expiry_are_migrated_as_expired(tmp_path):
+    path = tmp_path / "legacy-cookie.sqlite3"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "CREATE TABLE demo_sessions(token_hash TEXT PRIMARY KEY, "
+            "user_id TEXT NOT NULL, created_at REAL NOT NULL)"
+        )
+        connection.execute("INSERT INTO demo_sessions VALUES('old-cookie','old-user',1)")
+    storage = Storage(path)
+    assert storage.demo_session_context("old-cookie", 2) is None
+    storage.create_demo_session("new-cookie", "new-user", 2, 100)
+    assert storage.demo_session_context("new-cookie", 2) == ("new-cookie", "new-user")
+
+
 def test_two_connections_compete_for_last_capacity_atomically(tmp_path, records):
     catalog = [dict(item) for item in records]
     catalog[0]["capacity"] = 1

@@ -1,6 +1,15 @@
 # Quality gates e protocolo de validação
 
-**Status (2026-10-09):** Nesta revisão, Ruff, formatação, mypy, `make test` (115 testes), `make eval-offline` (40/40) e `make eval-compare` (40/40 em cada arquitetura nas três rodadas) passaram. Comparativo atual: `reports/20261009T040950Z-53dd5e96/`. A última execução completa de `make pre-push` ocorreu antes destas alterações; ainda faltam live Gemini, retry/breaker de providers, job de migrations com credencial separada, Cloud SQL real e CI remoto. A validação PostgreSQL local descartável anterior passou. Veja [plano de implementação](plano-de-implementacao.md).
+**Atualização de sessões (2026-10-09):** os contratos incluem catálogo API/MCP
+compartilhado, histórico persistido após reinício, isolamento de cookies, lease
+concorrente/expirado e cleanup sem apagar reservas. Pendências funcionais e
+limitações dos avaliadores estão em [pendências](pendencias.md); aprovação dos
+testes existentes não encerra esses itens. O `make pre-push` desta atualização
+passou: 129 testes sem navegador, três E2E, 40/40 evals, lint/tipos, build e
+smoke Compose incluindo histórico após reinício. PostgreSQL local e comparação
+offline de três rodadas também passaram; evidências em `pendencias.md`.
+
+**Evidência histórica anterior (2026-10-09):** Na revisão anterior, Ruff, formatação, mypy, `make test` (115 testes), `make eval-offline` (40/40) e `make eval-compare` (40/40 em cada arquitetura nas três rodadas) passaram. Comparativo daquela revisão: `reports/20261009T040950Z-53dd5e96/`. Naquele momento, a execução completa de `make pre-push` ainda precisava ser repetida; ainda faltam live Gemini, retry/breaker de providers, job de migrations com credencial separada, Cloud SQL real e CI remoto. A validação PostgreSQL local descartável anterior passou. Veja [plano de implementação](plano-de-implementacao.md).
 
 Gate é um conjunto de critérios que precisa passar para concluir a wave. Os gates acumulam: W2 exige os gates anteriores e os novos. Relatórios mostram `passed`, `failed`, `not_run` ou `not_applicable` com justificativa; somente os gates exigidos e aprovados autorizam concluir a wave.
 

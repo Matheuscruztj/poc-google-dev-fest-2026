@@ -98,6 +98,7 @@ Para uma origem servida em outro host/porta, defina `EVENTOPS_ALLOWED_ORIGINS` c
 - **FAQ:** busca lexical em oito documentos Markdown, com citações de arquivo e seção e abstenção quando não há evidência.
 - **Reserva simulada:** identidade de demonstração por cookie HttpOnly, prévia separada da confirmação, validade de cinco minutos, checagem de capacidade e idempotência no SQLite.
 - **Agente único:** conversa via `/api/chat`, com tools de leitura para agenda e FAQ, fontes validadas e proposta de reserva que sempre exige preview e confirmação pela interface.
+- **Sessões e histórico:** identidade e últimos quatro turnos persistidos no banco; recuperação após reinício, expiração em 24 h e bloqueio de chamadas simultâneas por conversa. API e MCP consultam o mesmo catálogo persistido.
 - **API:** `GET /health`, `GET /api/sessions`, `POST /api/schedule`, `POST /api/faq`, `POST /api/chat`, `POST /api/reservations/preview` e `POST /api/reservations`.
 
 Não há login real, reserva real, pagamentos nem calendário de terceiros. Agenda e FAQ são determinísticos; o chat identifica os modos offline, Ollama local e Gemini live.
@@ -134,7 +135,7 @@ Essa execução usa Gemini e pode consumir quota. A avaliação da arquitetura m
 
 ## Plano completo
 
-O escopo e a arquitetura das próximas waves estão descritos em [visão completa](docs/visao-completa.md), com tasks e critérios de aceite no [plano de implementação](docs/plano-de-implementacao.md). Os gates estão em [quality-gates](docs/quality-gates.md).
+O escopo e a arquitetura das próximas waves estão descritos em [visão completa](docs/visao-completa.md), com tasks e critérios de aceite no [plano de implementação](docs/plano-de-implementacao.md). Os gates estão em [quality-gates](docs/quality-gates.md). A revisão funcional e os critérios para concluir cada pendência estão em [pendências](docs/pendencias.md).
 
 **Implementado neste estágio:** base, MVP offline com catálogo SQLite, Docker Compose local, agente único, arquitetura multi offline com MCP stdio e políticas locais de deadline/retry/circuit breaker (W0–W5.6 offline). O adapter PostgreSQL passou em smoke local descartável para migração, API, idempotência e disputa da última vaga; ainda não há Cloud SQL provisionado nem G6 aprovado. Single segue como padrão. W3.7 e a comparação live aguardam chave/quota Google e revisão humana; multi live ainda não foi configurado e retorna erro explícito. Release e Cloud Run permanecem pendentes. Veja o [plano de implementação](docs/plano-de-implementacao.md).
 

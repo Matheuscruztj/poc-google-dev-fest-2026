@@ -167,6 +167,24 @@ def main() -> int:
             raise RuntimeError(
                 "O comprovante idempotente não persistiu após reiniciar o container."
             )
+        post("/api/chat", {"message": "Quais são as trilhas do evento?"})
+        history = subprocess.run(
+            [
+                "docker",
+                "exec",
+                container_id,
+                "python",
+                "-c",
+                "import os,sqlite3; c=sqlite3.connect(os.environ['EVENTOPS_DATABASE']); "
+                "print(c.execute('SELECT COUNT(*), COUNT(DISTINCT demo_session_hash) "
+                "FROM demo_chat_messages').fetchone())",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        if history != "(4, 1)":
+            raise RuntimeError("O histórico/cookie de chat não persistiu após reinício.")
         digest = subprocess.run(
             [
                 "docker",
@@ -183,7 +201,7 @@ def main() -> int:
             check=False,
         ).stdout.strip()
         print(
-            "Compose offline smoke: health, 20 sessões SQLite e reinício aprovados. "
+            "Compose offline smoke: health, catálogo/MCP, histórico e reinício aprovados. "
             f"Image id: {project}-app; digest: {digest or 'local-only'}"
         )
         return 0

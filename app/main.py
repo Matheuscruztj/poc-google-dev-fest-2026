@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import secrets
 import time
 from contextlib import asynccontextmanager
@@ -19,6 +18,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.agent import make_agent
 from app.agents.coordinator import CoordinatorAgent
+from app.chat_sessions import ChatSessionError, ChatSessions
 from app.config import Settings
 from app.data_validation import load_session_seed, validate_faq_catalog
 from app.faq import search_faq
@@ -43,8 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     mcp_breaker = CircuitBreaker()
     trace_dir = Path("/tmp/eventops") if config.database_url else config.database.parent
     configure_file_logging(trace_dir / "agent-traces.jsonl")
-    chat_history: dict[str, list[str]] = {}
-    chat_locks: dict[str, asyncio.Lock] = {}
+    chat_sessions = ChatSessions(storage)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> Any:
@@ -56,7 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.sessions = sessions
     application.state.reservations = reservation_service
     application.state.mcp_breaker = mcp_breaker
-    application.state.chat_history = chat_history
+    application.state.chat_sessions = chat_sessions
 
     @application.middleware("http")
     async def request_id_middleware(request: Request, call_next: Any) -> Any:
@@ -84,7 +83,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         now = time.time()
         context = storage.demo_session_context(token_hash(raw) if raw else None, now)
         if context:
-            request.state.demo_cookie = raw
             return context[1], context[0]
         raw = secrets.token_urlsafe(32)
         user = f"{config.demo_user}-{secrets.token_hex(8)}"
@@ -95,7 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             now + 86400,
         )
         request.state.demo_cookie = raw
-        return user, raw
+        return user, token_hash(raw)
 
     def verify_origin(request: Request) -> None:
         origin = request.headers.get("origin")
@@ -118,7 +116,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @application.exception_handler(ReservationError)
-    async def reservation_error(request: Request, exc: ReservationError) -> JSONResponse:
+    @application.exception_handler(ChatSessionError)
+    async def reservation_error(
+        request: Request, exc: ReservationError | ChatSessionError
+    ) -> JSONResponse:
         return error_response(request, exc.status_code, exc.code, str(exc))
 
     @application.exception_handler(RequestValidationError)
@@ -189,7 +190,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.post("/api/chat")
     async def chat(body: ChatRequest, request: Request) -> JSONResponse:
         verify_origin(request)
-        user, _ = ensure_demo_user(request)
+        _, browser_session = ensure_demo_user(request)
         current_sessions = sessions_from_records(storage.list_sessions())
         current_agent = (
             CoordinatorAgent(
@@ -198,6 +199,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 model=(config.ollama_model if config.agent_mode == "local" else config.agent_model),
                 timeout_seconds=config.agent_timeout_seconds,
                 circuit_breaker=mcp_breaker,
+                database=config.database_url or config.database.resolve(),
             )
             if body.architecture == "multi"
             else make_agent(
@@ -210,16 +212,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 config.ollama_model,
             )
         )
-        _, browser_session = ensure_demo_user(request)
-        if len(chat_history) > 4096:
-            chat_history.clear()
-            chat_locks.clear()
-        lock = chat_locks.setdefault(browser_session, asyncio.Lock())
-        async with lock:
-            history = list(chat_history.get(browser_session, []))
+        owner, history = chat_sessions.acquire(browser_session)
+        try:
             result = await current_agent.ask(body.message, history)
-            history.extend([body.message, result.answer])
-            chat_history[browser_session] = history[-8:]
+            chat_sessions.finish(browser_session, owner, body.message, result.answer)
+        finally:
+            chat_sessions.release(browser_session, owner)
         response = JSONResponse(
             content={
                 "answer": result.answer,

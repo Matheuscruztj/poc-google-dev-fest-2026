@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-import json
 import logging
+import os
 import sys
-from importlib.resources import files
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.data_validation import load_session_seed
 from app.schedule import suggest_schedule
 from app.schemas import Session
+from app.storage import Storage
 
 logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(levelname)s %(message)s")
 LOGGER = logging.getLogger("eventops.mcp")
@@ -32,14 +35,23 @@ class CheckScheduleInput(BaseModel):
     session_ids: list[str] = Field(min_length=1, max_length=3)
 
 
+@lru_cache(maxsize=1)
+def catalog_storage(target: str, seed_catalog: bool) -> Storage:
+    storage = Storage(target)
+    if seed_catalog:
+        storage.seed_sessions_if_empty(load_session_seed())
+    return storage
+
+
 def load_sessions() -> list[Session]:
-    # Reading through the package resource API works from wheel installs too.
-    resource = files("app").joinpath("data", "sessions.json")
-    records = json.loads(resource.read_text(encoding="utf-8"))
-    sessions = [Session.model_validate(item) for item in records]
-    if len(sessions) != 20 or len({item.id for item in sessions}) != 20:
-        raise ValueError("O catálogo empacotado deve conter 20 sessões com IDs únicos.")
-    return sessions
+    target = os.getenv("EVENTOPS_DATABASE_URL") or str(
+        Path(os.getenv("EVENTOPS_DATABASE", "var/eventops.sqlite3")).expanduser().resolve()
+    )
+    seed_catalog = os.getenv("EVENTOPS_SEED_CATALOG", "true").lower() in {"true", "1", "yes"}
+    return [
+        Session.model_validate(item)
+        for item in catalog_storage(target, seed_catalog).list_sessions()
+    ]
 
 
 def list_sessions_impl(payload: dict[str, Any]) -> dict[str, Any]:

@@ -7,6 +7,8 @@ from app.agent import ProviderError
 from app.agents.coordinator import CoordinatorAgent, DelegationBudget
 from app.resilience import CircuitBreaker
 
+pytestmark = pytest.mark.usefixtures("mcp_database")
+
 
 @pytest.mark.anyio
 async def test_multi_coordinator_uses_mcp_and_never_writes(sessions):

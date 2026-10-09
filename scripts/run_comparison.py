@@ -9,6 +9,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import uuid4
 
@@ -20,6 +21,7 @@ from app.agents.coordinator import COORDINATOR_PROMPT_VERSION, CoordinatorAgent 
 from app.data_validation import load_session_seed  # noqa: E402
 from app.evaluators import evaluate_case, load_cases, run_case  # noqa: E402
 from app.schemas import Session  # noqa: E402
+from app.storage import Storage  # noqa: E402
 from evals.harness import multi_failure_result, single_agent_for_case  # noqa: E402
 
 
@@ -28,13 +30,21 @@ def digest(path: Path) -> str:
 
 
 async def run(rounds: int) -> int:
+    with TemporaryDirectory(prefix="eventops-comparison-") as directory:
+        return await compare(rounds, Path(directory) / "catalog.sqlite3")
+
+
+async def compare(rounds: int, database: Path) -> int:
     if not 1 <= rounds <= 3:
         raise ValueError("--rounds deve estar entre 1 e 3.")
     dataset = ROOT / "evals/cases.jsonl"
     cases = load_cases(dataset)
     sessions = [Session.model_validate(item) for item in load_session_seed()]
+    Storage(database).seed_sessions_if_empty(load_session_seed())
     single = make_agent(sessions, "offline", "offline", None)
-    multi = CoordinatorAgent(sessions, mode="offline", model="offline", use_mcp=True)
+    multi = CoordinatorAgent(
+        sessions, mode="offline", model="offline", use_mcp=True, database=database
+    )
     report: dict[str, Any] = {
         "run_id": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8],
         "created_at": datetime.now(UTC).isoformat(),

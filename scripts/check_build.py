@@ -31,6 +31,7 @@ def verify_archive_contents(artifacts: list[Path]) -> dict[str, str]:
         "app/static/styles.css",
         "app/static/app.js",
         "app/migrations/0001_initial.sql",
+        "app/migrations/0002_chat_sessions.sql",
         "mcp_server/server.py",
     )
     data_hashes = {
@@ -77,6 +78,7 @@ def verify_required_resources() -> list[str]:
     resources = [
         package.joinpath("data/sessions.json"),
         package.joinpath("migrations/0001_initial.sql"),
+        package.joinpath("migrations/0002_chat_sessions.sql"),
         package.joinpath("static/index.html"),
         package.joinpath("static/styles.css"),
         package.joinpath("static/app.js"),

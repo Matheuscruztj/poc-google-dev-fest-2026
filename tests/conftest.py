@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.main import create_app
 from app.schemas import Session
+from app.storage import Storage
 
 
 @pytest.fixture
@@ -21,6 +22,17 @@ def records() -> list[dict[str, object]]:
 @pytest.fixture
 def sessions(records: list[dict[str, object]]) -> list[Session]:
     return [Session.model_validate(item) for item in records]
+
+
+@pytest.fixture
+def mcp_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, records: list[dict[str, object]]
+) -> Path:
+    database = tmp_path / "mcp.sqlite3"
+    Storage(database).seed_sessions_if_empty(records)
+    monkeypatch.setenv("EVENTOPS_DATABASE", str(database))
+    monkeypatch.delenv("EVENTOPS_DATABASE_URL", raising=False)
+    return database
 
 
 @pytest.fixture

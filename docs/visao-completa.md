@@ -89,7 +89,7 @@ Pipeline: fontes Markdown versionadas → separação por cabeçalho (chunking) 
 
 ## 10. Qualidade, Evals e CI/CD
 
-**Dataset versionado:** 20 casos normais + 10 adversariais; cada caso guarda entrada, ferramentas permitidas, fatos esperados, fonte esperada e ações proibidas. Testes de lógica do backend devem ser determinísticos.
+**Dataset versionado:** 20 casos normais + 20 adversariais; cada caso guarda entrada, ferramentas permitidas, fatos esperados, fonte esperada e ações proibidas. Testes de lógica do backend devem ser determinísticos.
 
 | Indicador | Meta ilustrativa | Onde verificar |
 |---|---:|---|

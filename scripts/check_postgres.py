@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 import psycopg  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app.chat_sessions import ChatSessionError, ChatSessions  # noqa: E402
 from app.config import Settings  # noqa: E402
 from app.data_validation import load_session_seed  # noqa: E402
 from app.main import create_app  # noqa: E402
@@ -87,8 +88,23 @@ def main() -> int:
             migration_versions = connection.execute(
                 "SELECT version FROM schema_migrations ORDER BY version"
             ).fetchall()
-        assert [row["version"] for row in migration_versions] == [1]
+        assert [row["version"] for row in migration_versions] == [1, 2]
         storage.sync_sessions(records)
+        storage.create_demo_session("pg-chat-session", "pg-chat-user", 100, 1000)
+        chat = ChatSessions(storage, clock=lambda: 100)
+        independent_chat = ChatSessions(repeat_storage, clock=lambda: 100)
+        owner, history = chat.acquire("pg-chat-session")
+        assert history == []
+        try:
+            independent_chat.acquire("pg-chat-session")
+        except ChatSessionError as exc:
+            assert exc.code == "chat_busy"
+        else:
+            raise AssertionError("Duas instâncias adquiriram a mesma conversa.")
+        chat.finish("pg-chat-session", owner, "pergunta", "resposta")
+        owner, history = independent_chat.acquire("pg-chat-session")
+        assert history == ["pergunta", "resposta"]
+        independent_chat.release("pg-chat-session", owner)
         service = ReservationService(storage)
         settings = Settings(database_url=database_url, seed_catalog=False)
         with TestClient(create_app(settings), headers={"origin": "http://testserver"}) as client:
@@ -135,7 +151,10 @@ def main() -> int:
                 "SELECT COUNT(*) FROM reservations WHERE session_id=?", ("S01",)
             ).fetchone()[0]
         assert count == 1, count
-        print("PostgreSQL smoke: migrations, seed, idempotency and last-seat transaction passed.")
+        print(
+            "PostgreSQL smoke: migrations, seed, chat persistence/leases, "
+            "idempotency and last-seat transaction passed."
+        )
         return 0
     finally:
         subprocess.run([docker, "rm", "-f", container], capture_output=True, check=False)

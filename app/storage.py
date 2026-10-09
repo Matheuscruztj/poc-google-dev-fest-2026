@@ -12,7 +12,7 @@ from typing import Any
 
 from app.postgres_compat import PostgresConnection
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -28,6 +28,16 @@ CREATE TABLE IF NOT EXISTS catalog_state (
 CREATE TABLE IF NOT EXISTS demo_sessions (
   token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at REAL NOT NULL,
   expires_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS demo_sessions_by_expiry ON demo_sessions(expires_at);
+CREATE TABLE IF NOT EXISTS demo_chat_messages (
+  demo_session_hash TEXT NOT NULL REFERENCES demo_sessions(token_hash) ON DELETE CASCADE,
+  position INTEGER NOT NULL CHECK(position >= 0 AND position < 8),
+  content TEXT NOT NULL, PRIMARY KEY(demo_session_hash, position)
+);
+CREATE TABLE IF NOT EXISTS demo_chat_leases (
+  demo_session_hash TEXT PRIMARY KEY REFERENCES demo_sessions(token_hash) ON DELETE CASCADE,
+  owner TEXT NOT NULL, expires_at REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS confirmations (
   token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL,
@@ -61,6 +71,16 @@ class Storage:
             if self.database_url:  # pragma: no branch - PostgreSQL is covered by postgres-check.
                 connection.apply_migrations()
             else:
+                demo_columns = {
+                    str(row["name"])
+                    for row in connection.execute("PRAGMA table_info(demo_sessions)")
+                }
+                if demo_columns and "expires_at" not in demo_columns:
+                    # Legacy cookies had no expiry. Expire those identities rather
+                    # than granting an arbitrary new lifetime during migration.
+                    connection.execute(
+                        "ALTER TABLE demo_sessions ADD COLUMN expires_at REAL NOT NULL DEFAULT 0"
+                    )
                 connection.executescript(SCHEMA)
             # PostgreSQL's schema is managed by its versioned migrations.
             if not self.database_url:  # pragma: no branch
@@ -182,6 +202,7 @@ class Storage:
         self, token_hash: str, user_id: str, now: float, expires_at: float
     ) -> None:
         with self.connection() as connection:
+            connection.execute("DELETE FROM demo_sessions WHERE expires_at<=?", (now,))
             connection.execute(
                 "INSERT OR IGNORE INTO demo_sessions"
                 "(token_hash,user_id,created_at,expires_at) VALUES(?,?,?,?)",

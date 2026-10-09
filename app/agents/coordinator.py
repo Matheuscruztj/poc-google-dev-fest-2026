@@ -6,6 +6,7 @@ import asyncio
 import re
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from app.agent import AgentResult, ProviderError
@@ -98,6 +99,7 @@ class CoordinatorAgent:
         timeout_seconds: int = 12,
         use_mcp: bool = True,
         circuit_breaker: CircuitBreaker | None = None,
+        database: Path | str | None = None,
     ) -> None:
         self.sessions = sessions
         self.mode = mode
@@ -105,6 +107,7 @@ class CoordinatorAgent:
         self.timeout_seconds = timeout_seconds
         self.use_mcp = use_mcp
         self.circuit_breaker = circuit_breaker
+        self.database = database
 
     async def ask(self, message: str, history: list[str] | None = None) -> AgentResult:
         # Routing and fallback are deterministic in offline mode. Live mode will
@@ -182,7 +185,11 @@ class CoordinatorAgent:
                 if self.use_mcp:
                     if self.circuit_breaker:
                         self.circuit_breaker.allow()
-                    mcp = ScheduleMCPClient(timeout_seconds=min(self.timeout_seconds, 3.0))
+                    mcp = ScheduleMCPClient(
+                        timeout_seconds=min(self.timeout_seconds, 3.0),
+                        database=self.database,
+                        seed_catalog=self.database is None,
+                    )
                     async with asyncio.timeout(deadline.remaining()):
                         await mcp.start()
                 schedule_result, schedule_retries = await run_with_retries(

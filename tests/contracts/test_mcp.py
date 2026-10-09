@@ -7,6 +7,9 @@ import pytest
 from app.mcp_client import MCPClientError, ScheduleMCPClient
 from app.schedule import suggest_schedule
 from app.schemas import Session
+from app.storage import Storage
+
+pytestmark = pytest.mark.usefixtures("mcp_database")
 
 
 @pytest.mark.anyio
@@ -71,3 +74,26 @@ def test_stdio_mcp_schema_rejects_extra_fields():
 
     with pytest.raises(ValidationError):
         ListSessionsInput.model_validate({"limit": 1, "user_id": "admin"})
+
+
+@pytest.mark.anyio
+async def test_mcp_uses_database_changes_even_after_process_start(mcp_database):
+    storage = Storage(mcp_database)
+    async with ScheduleMCPClient(database=mcp_database, seed_catalog=False) as client:
+        before = await client.call_tool("list_sessions", {"track": "IA", "limit": 3})
+        assert before["sessions"]
+        with storage.connection() as connection:
+            connection.execute("UPDATE sessions SET track='Banco' WHERE track='IA'")
+        after = await client.call_tool("list_sessions", {"track": "IA", "limit": 3})
+        persisted = await client.call_tool("list_sessions", {"track": "Banco", "limit": 3})
+        assert after["sessions"] == []
+        assert persisted["sessions"]
+        assert all(item["track"] == "Banco" for item in persisted["sessions"])
+
+
+@pytest.mark.anyio
+async def test_mcp_does_not_reseed_empty_database_when_disabled(tmp_path):
+    database = tmp_path / "empty.sqlite3"
+    async with ScheduleMCPClient(database=database, seed_catalog=False) as client:
+        result = await client.call_tool("list_sessions", {"limit": 3})
+    assert result["sessions"] == []

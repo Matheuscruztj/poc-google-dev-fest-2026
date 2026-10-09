@@ -8,7 +8,7 @@ Este runbook descreve a preparação para publicação; nenhum projeto ou recurs
 - Guardar `EVENTOPS_DATABASE_URL` no Secret Manager e referenciá-lo no serviço; não o inserir em imagem, arquivo de ambiente versionado, saída de shell, logs ou manifesto.
 - `GOOGLE_API_KEY` só será necessária quando a arquitetura Gemini live for implementada e autorizada para avaliação. O serviço ainda opera no modo offline/local configurado e não deve receber essa chave como parte desta etapa.
 - Definir `EVENTOPS_SEED_CATALOG=false` após o seed inicial explícito, `EVENTOPS_COOKIE_SECURE=true` sob HTTPS e origens permitidas específicas. O catálogo não deve ser sincronizado durante o startup concorrente de várias instâncias.
-- As sessões de demonstração e o histórico de chat atuais não são autenticação nem armazenamento distribuído. Definir política de acesso da demo antes de torná-la pública.
+- Sessões de demonstração, histórico limitado de chat e leases usam o banco compartilhado. Eles não representam autenticação de pessoas reais. A validação local do adapter não aprova operação cloud; definir política de acesso da demo antes de torná-la pública.
 
 ## Migration e publicação
 

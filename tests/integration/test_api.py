@@ -1,3 +1,14 @@
+import asyncio
+
+import pytest
+from starlette.requests import Request
+
+from app.config import Settings
+from app.main import create_app
+from app.reservations import token_hash
+from app.schemas import ChatRequest
+
+
 def test_health_and_catalog(client):
     assert client.get("/health").json() == {
         "status": "ok",
@@ -175,7 +186,100 @@ def test_chat_history_is_partitioned_by_browser_cookie(client):
     second = other.post("/api/chat", json={"message": "Quais trilhas existem?"})
     assert first.status_code == second.status_code == 200
     assert client.cookies.get("eventops_demo") != other.cookies.get("eventops_demo")
-    assert len(client.app.state.chat_history) == 2
+    with client.app.state.storage.connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(DISTINCT demo_session_hash) FROM demo_chat_messages"
+        ).fetchone()[0]
+    assert count == 2
+
+
+def test_chat_history_survives_application_restart(client, monkeypatch):
+    message = "Quais trilhas existem?"
+    first = client.post("/api/chat", json={"message": message}).json()
+    cookie = client.cookies.get("eventops_demo")
+    histories = []
+
+    class RecordingAgent:
+        async def ask(self, message, history):
+            from app.agent import AgentResult
+
+            histories.append(history)
+            return AgentResult("Resposta seguinte", [], [], None, "offline", {})
+
+    monkeypatch.setattr("app.main.make_agent", lambda *args: RecordingAgent())
+    restarted = create_app(Settings(database=client.app.state.settings.database))
+    with client.__class__(restarted, headers={"origin": "http://testserver"}) as other:
+        other.cookies.set("eventops_demo", cookie)
+        response = other.post("/api/chat", json={"message": "Qual é o fuso?"})
+        assert response.status_code == 200
+        assert "set-cookie" not in response.headers
+    assert histories == [[message, first["answer"]]]
+
+
+def test_parallel_chat_for_same_browser_returns_busy(client):
+    client.post("/api/chat", json={"message": "Quais trilhas existem?"})
+    session_hash = token_hash(client.cookies.get("eventops_demo"))
+    owner, _ = client.app.state.chat_sessions.acquire(session_hash)
+    try:
+        response = client.post("/api/chat", json={"message": "Qual é o fuso?"})
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "chat_busy"
+    finally:
+        client.app.state.chat_sessions.release(session_hash, owner)
+    assert client.post("/api/chat", json={"message": "Qual é o fuso?"}).status_code == 200
+
+
+def test_unexpected_agent_error_releases_chat_lease(client, monkeypatch):
+    class BrokenAgent:
+        async def ask(self, message, history):
+            raise RuntimeError("controlled failure")
+
+    monkeypatch.setattr("app.main.make_agent", lambda *args: BrokenAgent())
+    with client.__class__(
+        client.app, headers={"origin": "http://testserver"}, raise_server_exceptions=False
+    ) as browser:
+        assert browser.post("/api/chat", json={"message": "Qual é o fuso?"}).status_code == 500
+    with client.app.state.storage.connection() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM demo_chat_leases").fetchone()[0] == 0
+
+
+@pytest.mark.anyio
+async def test_cancelled_chat_releases_lease(client, monkeypatch):
+    class CancelledAgent:
+        async def ask(self, message, history):
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr("app.main.make_agent", lambda *args: CancelledAgent())
+    request = Request(
+        {
+            "type": "http",
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "path": "/api/chat",
+            "headers": [(b"host", b"testserver"), (b"origin", b"http://testserver")],
+        }
+    )
+    endpoint = next(route.endpoint for route in client.app.routes if route.path == "/api/chat")
+    with pytest.raises(asyncio.CancelledError):
+        await endpoint(ChatRequest(message="Qual é o fuso?"), request)
+    with client.app.state.storage.connection() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM demo_chat_leases").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM demo_chat_messages").fetchone()[0] == 0
+
+
+def test_api_and_multi_share_persisted_catalog(client):
+    with client.app.state.storage.connection() as connection:
+        connection.execute("UPDATE sessions SET track='Banco' WHERE track='IA'")
+    for architecture in ("single", "multi"):
+        response = client.post(
+            "/api/chat", json={"message": "Palestras de Banco", "architecture": architecture}
+        )
+        assert response.status_code == 200
+        result = response.json()
+        assert result["error"] is None
+        assert result["session_ids"]
+        catalog = client.get("/api/sessions", params={"track": "Banco"}).json()["sessions"]
+        assert set(result["session_ids"]) <= {item["id"] for item in catalog}
 
 
 def test_frontend_is_served(client):

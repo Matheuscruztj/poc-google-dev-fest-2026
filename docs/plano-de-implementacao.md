@@ -1,10 +1,20 @@
 # Plano de implementação por waves
 
-**Status:** Mudança de escopo implementada: SQLite serve catálogo e reservas; Compose mantém volume persistente e provider Ollama local opcional (CPU ou override GPU/CUDA), e Gemini via API continua disponível. Husky `.husky/pre-push` e workflow GitHub chamam o mesmo `make pre-push`. Build/smoke Compose, API, documentação e eval offline aprovados. Pendentes: pre-push local completo por dependência de sistema Playwright ausente, teste de modelo em GPU e execução remota GitHub.
+**Revisão funcional e sessões (2026-10-09):** veja [pendências](pendencias.md),
+com critérios de conclusão por item. API/MCP agora compartilham catálogo no banco;
+histórico e leases de chat são persistidos, com isolamento por cookie, retenção
+de quatro turnos, expiração e recuperação após reinício. A atualização não
+aprova G4 live, release candidate nem G6 cloud. Os resultados antigos abaixo
+permanecem como histórico de execução. Nesta atualização, `make pre-push`
+completo passou (129 testes sem navegador, três E2E, 40/40 evals, wheel e smoke
+Compose com histórico após reinício), assim como `make postgres-check` e a
+comparação offline de três rodadas. Evidências em [pendências](pendencias.md).
 
-**Evidência local W3–W6 parcial:** Na revisão mais recente passaram Ruff, formatação, mypy, `make test` (115 testes), `make eval-offline` (40/40) e `make eval-compare` (40/40 casos por arquitetura nas três rodadas; relatório `20261009T040950Z-53dd5e96`). O dataset inclui 20 casos adversariais, com 10 mapeados ao OWASP LLM/Agentic 2026; o runner reproduz o caso multi-turno de contexto. `make build` instalou o wheel fora do checkout; `make compose-check` aprovou fluxo offline, usuário UID 10001, recursos sem escrita, porta e reinício. `make postgres-check` aprovou migration versionada/repetida, startup simultâneo, API, seed, idempotência e disputa da última vaga em PostgreSQL local descartável. Isso não aprova G4 live nem G6 cloud. W3.7 e comparação live aguardam `GOOGLE_API_KEY`, quota suficiente e revisão humana.
+**Status:** Mudança de escopo implementada: SQLite serve catálogo e reservas; Compose mantém volume persistente e provider Ollama local opcional (CPU ou override GPU/CUDA), e Gemini via API continua disponível. Husky `.husky/pre-push` e workflow GitHub chamam o mesmo `make pre-push`. Build/smoke Compose, API, documentação e eval offline aprovados. Pendentes: funcionalidades registradas em `pendencias.md`, teste de modelo em GPU e execução remota GitHub. Playwright passou na revisão de 2026-10-09.
 
-Relatórios recentes: comparação pareada [20261009T031731Z-743e0971](../reports/20261009T031731Z-743e0971/summary.md) e métricas agregadas no mesmo diretório; `make build` gerou wheel `d6e7f24bab32d9a9110e167450946b88e9b31a7fadc05aa12bc76ae77b5ac3ff`; smoke Compose registrou digest local `sha256:85b9595c48ca79e1019868b10a67cefcab80578259cd8b1b9173a8c9c4ef9b4e`. Reports são artefatos locais ignorados pelo Git.
+**Evidência histórica local W3–W6 parcial:** Na revisão anterior passaram Ruff, formatação, mypy, `make test` (115 testes), `make eval-offline` (40/40) e `make eval-compare` (40/40 casos por arquitetura nas três rodadas; relatório `20261009T040950Z-53dd5e96`). O dataset inclui 20 casos adversariais, com 10 mapeados ao OWASP LLM/Agentic 2026; o runner reproduz o caso multi-turno de contexto. `make build` instalou o wheel fora do checkout; `make compose-check` aprovou fluxo offline, usuário UID 10001, recursos sem escrita, porta e reinício. `make postgres-check` aprovou migration versionada/repetida, startup simultâneo, API, seed, idempotência e disputa da última vaga em PostgreSQL local descartável. Isso não aprova G4 live nem G6 cloud. W3.7 e comparação live aguardam `GOOGLE_API_KEY`, quota suficiente e revisão humana.
+
+Relatórios históricos: comparação pareada [20261009T031731Z-743e0971](../reports/20261009T031731Z-743e0971/summary.md) e métricas agregadas no mesmo diretório; `make build` gerou wheel `d6e7f24bab32d9a9110e167450946b88e9b31a7fadc05aa12bc76ae77b5ac3ff`; smoke Compose registrou digest local `sha256:85b9595c48ca79e1019868b10a67cefcab80578259cd8b1b9173a8c9c4ef9b4e`. Reports são artefatos locais ignorados pelo Git.
 
 **Legenda:** `[x]` concluída com evidência no repositório; `[!] PENDENTE` não concluída ou sem comprovação. Uma task parcialmente feita mantém pendentes seus passos restantes.
 
@@ -266,7 +276,7 @@ Reservas: repetir a mesma chave retorna o comprovante original mesmo após consu
 - [x] Vincular preview/reserva à identidade resolvida; chamadas do chat não alteram o estado de confirmação.
 - [x] Testar dois contextos de navegador independentes, token de sessão inválido e tentativa de reutilizar confirmação de outro usuário.
 
-**Evidência:** isolamento de identidades e checagem de origem. O mapa de sessões também precisará de persistência compartilhada na W6.
+**Evidência:** isolamento de identidades e checagem de origem. Identidades, histórico limitado e leases agora são compartilhados via banco; comportamento cloud ainda depende de G6.
 
 #### W2.3 — Página da demonstração
 
@@ -326,7 +336,7 @@ Reservas: repetir a mesma chave retorna o comprovante original mesmo após consu
 
 **Evidência:** outra instalação completa o fluxo offline seguindo apenas o guia.
 
-**Gate de saída:** G0–G3. `make check` incorpora integração e fluxo de navegador. Evidência: lint, tipos, 79 testes sem navegador, build wheel/sdist, avaliação offline e smoke Compose passaram; execução Playwright local está bloqueada por biblioteca `libnspr4.so` ausente. O CI usa instalação do Chromium com dependências de sistema.
+**Gate de saída:** G0–G3. `make check` incorpora integração e fluxo de navegador. Evidência: lint, tipos, 79 testes sem navegador, build wheel/sdist, avaliação offline e smoke Compose passaram; a execução histórica de Playwright ficou bloqueada por `libnspr4.so`, mas a revisão de 2026-10-09 aprovou os três testes de navegador. O CI usa instalação do Chromium com dependências de sistema.
 
 ## W3 — Agente único e baseline de qualidade
 
@@ -338,7 +348,7 @@ Reservas: repetir a mesma chave retorna o comprovante original mesmo após consu
 | W3.2 | Contratos de tools, allowlist e validação de entradas/saídas | W3.1 | IDs e fontes inválidos rejeitados; agente não possui ferramenta para efetivar reserva |
 | W3.3 | `/api/chat` e proposta de reserva conectada ao preview do backend | W3.2 | Somente confirmação explícita pela UI grava; mensagens/documentos não confirmam operações |
 | W3.4 | Traces com versões, chamadas, duração, tokens e estado do resultado | W3.3 | Sem chaves/tokens de confirmação nos logs; consumo ausente marcado como desconhecido |
-| W3.5 | Completar dataset de 20 casos normais e 10 adversariais | W1.7, W3.2 | Oráculos, ferramentas permitidas, fontes e ações proibidas definidos por caso |
+| W3.5 | Completar dataset de 20 casos normais e 20 adversariais | W1.7, W3.2 | Oráculos, ferramentas permitidas, fontes e ações proibidas definidos por caso |
 | W3.6 | Runner de evals offline, replay e live, produzindo JSON e Markdown | W3.4–5 | Avaliadores independentes da implementação; timeout conta como falha; modos identificados |
 | W3.7 | Baseline SINGLE_AGENT com três rodadas completas | W3.6 | G4 aprovado; relatório registra todas as tentativas e falhas, sem selecionar respostas favoráveis |
 
@@ -386,7 +396,7 @@ Separar saída bruta do modelo, resultado validado e fallback. A validação pod
 
 - [x] Definir ID de solicitação, modo, versões, chamada, ferramenta, duração e status; correlacionar chamadas com a tarefa.
 - [x] Capturar tokens reportados pelo provider, incluindo tentativas falhas quando houver consumo disponível.
-- [x] Redigir chaves/tokens estruturados e em texto; logs omitem a saída bruta e respostas preservadas em traces HTTP são do dataset sintético. O histórico de conversa fica somente em memória do processo.
+- [x] Redigir chaves/tokens estruturados e em texto; logs omitem a saída bruta e respostas preservadas em traces HTTP são do dataset sintético. Histórico limitado de conversa e leases ficam no banco por hash da sessão de navegador, com expiração.
 - [x] Registrar separadamente saída bruta, validação e fallback; deixar métricas ausentes como desconhecidas.
 
 **Evidência:** trace reconstrói uma tarefa sem revelar segredo e sem atribuir token zero a consumo não informado.
@@ -395,7 +405,7 @@ Separar saída bruta do modelo, resultado validado e fallback. A validação pod
 
 **Arquivos previstos:** `evals/cases.jsonl`, `evals/fixtures/`, schema de caso e documentação do dataset.
 
-- [x] Completar a distribuição de 20 casos normais e 10 adversariais definida em G4; cada ID deve ser único e estável.
+- [x] Completar a distribuição atual de 20 casos normais e 20 adversariais definida em G4; cada ID deve ser único e estável.
 - [x] Registrar estado inicial, pergunta, fatos/fontes esperados, tools permitidas, ações proibidas e efeitos esperados nos 40 casos, incluindo riscos OWASP LLM/Agentic e uma sequência multi-turno de contexto.
 - [x] Definir roteiro explícito UI/API para propostas, preview/cancelamento e tentativas sem confirmação; a resposta do modelo nunca equivale a confirmação.
 - [x] Manter fixture adversarial fora do catálogo FAQ e validar existência de fixtures e fontes no carregamento do dataset.
@@ -451,7 +461,7 @@ Multiagent não precisa superar o single agent para a apresentação. Se tiver q
 - [x] Escolher stdio e documentar `python -m mcp_server.server`.
 - [x] Expor listagem e verificação com regras comuns de agenda; entrada tem schema estrito e limites.
 - [x] Configurar logs do servidor em stderr; stdout permanece reservado ao protocolo.
-- [x] Ler seed via package resources, validar contagem/IDs e rejeitar IDs desconhecidos.
+- [x] Consultar o banco configurado, compartilhado com a API; usar package resources somente para seed de banco vazio na execução manual. Rejeitar IDs desconhecidos; ler alterações persistidas a cada chamada.
 
 **Evidência:** cliente real descobre tools e recebe os mesmos resultados da consulta interna.
 
@@ -648,7 +658,7 @@ Começar com escala mínima zero e poucas instâncias; medir para ajustar concor
 - [x] Escolher Cloud SQL for PostgreSQL como candidato por transações relacionais e unicidade; adapter local validado. Firestore não foi adotado porque exigiria remodelar o contrato transacional atual.
 - [!] PENDENTE — Confirmar região (candidata: `southamerica-east1`), acesso à demo, limite de instâncias, timeout, concorrência e estratégia de modelo/segredos com o projeto real.
 - [!] PENDENTE — Dimensionar recursos, consultar preços/quota na região escolhida e registrar estimativa antes de criar qualquer recurso.
-- [x] Definir persistência compartilhada para reservas, capacidades/catálogo, idempotência, confirmações e sessões fictícias; histórico de chat permanece transitório e local ao processo.
+- [x] Definir persistência compartilhada para reservas, capacidades/catálogo, idempotência, confirmações, sessões fictícias, histórico limitado de chat e leases. Schema SQLite v3 e migration PostgreSQL `0002_chat_sessions.sql` adicionam histórico e leases.
 
 Cloud SQL PostgreSQL pode ser conectado ao Cloud Run pelo fluxo oficial da Google; a região precisa ser escolhida ao criar a instância. O preço depende de CPU, memória, armazenamento, rede e região e a instância ativa é cobrada por tempo de execução. Não há estimativa numérica congelada nesta decisão; os preços devem ser consultados antes de provisionar. Fontes: [conectar Cloud Run ao Cloud SQL PostgreSQL](https://docs.cloud.google.com/sql/docs/postgres/connect-run), [disponibilidade regional](https://docs.cloud.google.com/sql/docs/postgres/region-availability-overview) e [preços do Cloud SQL](https://cloud.google.com/sql/pricing).
 
