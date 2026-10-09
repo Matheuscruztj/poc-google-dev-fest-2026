@@ -16,6 +16,8 @@ import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from candidate import candidate_digest
+
 
 def free_port() -> int:
     with socket.socket() as listener:
@@ -26,6 +28,8 @@ def free_port() -> int:
 def verify_archive_contents(artifacts: list[Path]) -> dict[str, str]:
     required = (
         "app/data/sessions.json",
+        "app/data/faq_metadata.json",
+        "app/data/model_prices.json",
         "app/data/faq/acessibilidade.md",
         "app/static/index.html",
         "app/static/styles.css",
@@ -77,6 +81,8 @@ def verify_required_resources() -> list[str]:
     package = files("app")
     resources = [
         package.joinpath("data/sessions.json"),
+        package.joinpath("data/faq_metadata.json"),
+        package.joinpath("data/model_prices.json"),
         package.joinpath("migrations/0001_initial.sql"),
         package.joinpath("migrations/0002_chat_sessions.sql"),
         package.joinpath("static/index.html"),
@@ -182,6 +188,7 @@ def main() -> int:
             server.wait(timeout=5)
     report = {
         "status": "passed",
+        "candidate_sha256": candidate_digest(),
         "artifacts": digests,
         "wheel_installed_outside_checkout": True,
         "import_origin": import_result.stdout.strip(),

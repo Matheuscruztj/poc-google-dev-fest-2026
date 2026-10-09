@@ -11,6 +11,8 @@ import time
 import urllib.request
 from pathlib import Path
 
+from candidate import candidate_digest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -185,13 +187,13 @@ def main() -> int:
         ).stdout.strip()
         if history != "(4, 1)":
             raise RuntimeError("O histórico/cookie de chat não persistiu após reinício.")
-        digest = subprocess.run(
+        image_id = subprocess.run(
             [
                 "docker",
                 "image",
                 "inspect",
                 "--format",
-                "{{index .RepoDigests 0}}",
+                "{{.Id}}",
                 f"{project}-app",
             ],
             cwd=ROOT,
@@ -200,9 +202,21 @@ def main() -> int:
             text=True,
             check=False,
         ).stdout.strip()
+        if not image_id.startswith("sha256:"):
+            raise RuntimeError("Docker não retornou o ID imutável da imagem Compose.")
+        evidence = {
+            "status": "passed",
+            "candidate_sha256": candidate_digest(),
+            "image_id": image_id,
+            "container_id": container_id,
+        }
+        Path("reports").mkdir(exist_ok=True)
+        Path("reports/compose.json").write_text(
+            json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
         print(
             "Compose offline smoke: health, catálogo/MCP, histórico e reinício aprovados. "
-            f"Image id: {project}-app; digest: {digest or 'local-only'}"
+            f"Image id: {image_id}"
         )
         return 0
     finally:

@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: setup run lint typecheck test e2e build compose-check postgres-check check pre-push compose-up compose-down compose-logs eval-offline eval-live eval-compare report-metrics
+.PHONY: setup run lint typecheck test e2e build compose-check postgres-check check pre-push release-check compose-up compose-down compose-logs eval-offline eval-live eval-compare report-metrics
 
 setup:
 	$(PYTHON) -c 'import sys; assert sys.version_info[:2] == (3, 11), "Use Python 3.11"'
@@ -65,4 +65,7 @@ report-metrics:
 check: lint typecheck test e2e eval-offline
 
 pre-push: check build compose-check
+
+release-check: check build compose-check
+	$(PYTHON) scripts/release_check.py
 

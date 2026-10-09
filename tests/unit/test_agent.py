@@ -202,6 +202,28 @@ async def test_tool_budget_is_per_request_and_prohibited_tools_are_not_exposed(c
     assert usage == {"input_tokens": None, "output_tokens": None}
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("message", "expected_ids", "expected_level_word"),
+    [
+        ("Sugira palestra iniciante de Desenvolvimento", ["S02"], "iniciantes"),
+        ("Sessões intermediárias de IA", ["S05", "S08", "S11"], "intermediárias"),
+        ("Palestras avançadas de Segurança", ["S17"], "avançadas"),
+    ],
+)
+async def test_offline_provider_filters_requested_level(
+    catalog, message, expected_ids, expected_level_word
+):
+    from app.agent import OfflineProvider
+
+    tools = DemoTools(catalog)
+    raw, _ = await OfflineProvider().respond(message, tools, [])
+    response = json.loads(raw)
+    assert response["session_ids"] == expected_ids
+    assert expected_level_word in response["answer"]
+    assert tools.calls == ["list_sessions"]
+
+
 def test_adversarial_fixture_is_not_a_published_faq():
     from app.faq import load_chunks
 

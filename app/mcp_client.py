@@ -26,6 +26,7 @@ class ScheduleMCPClient:
         server_module: str = "mcp_server.server",
         database: Path | str | None = None,
         seed_catalog: bool = True,
+        extra_env: dict[str, str] | None = None,
     ) -> None:
         self.timeout_seconds = timeout_seconds
         self.project_root = project_root or Path(__file__).resolve().parents[1]
@@ -41,6 +42,7 @@ class ScheduleMCPClient:
         else:
             self.server_env = {"EVENTOPS_DATABASE": str(Path(target).expanduser().resolve())}
         self.server_env["EVENTOPS_SEED_CATALOG"] = "true" if seed_catalog else "false"
+        self.server_env.update(extra_env or {})
         self._stack: AsyncExitStack | None = None
         self._session: ClientSession | None = None
 

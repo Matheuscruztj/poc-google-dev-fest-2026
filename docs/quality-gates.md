@@ -43,12 +43,12 @@ O Makefile é a interface local. Alguns alvos previstos abaixo entram apenas nas
 | `make compose-check` | Build de imagem, smoke HTTP, identidade sem privilégios e reinício com volume |
 | `make postgres-check` | PostgreSQL descartável local via Docker; adapter, seed, API, idempotência e disputa concorrente; não acessa cloud |
 | `make eval-compare` | Três rodadas offline intercaladas; single interno versus multi/MCP, com transporte identificado |
-| `make report-metrics REPORT=reports/run/comparison.json` | Agrega duração, falhas, tools, retries e tokens conhecidos; custo ausente permanece desconhecido |
+| `make report-metrics REPORT=reports/run/comparison.json` | Agrega sucesso, duração, chamadas, retries, consumo medido e custo por tarefa; gera JSON e dashboard HTML local |
 | `make check` | Todos os gates offline obrigatórios na wave atual |
 | `make pre-push` | `make check`, build instalável e smoke Compose offline; executado pelo hook pre-push e no GitHub |
 | Husky (`.husky/pre-push`) | Executa `make pre-push` antes de enviar commits |
 | `make compose-check` | Build/smoke Compose, health, catálogo e chat MCP, receipt após reinício, volume temporário |
-| `make release-check` | Gates offline completos e verificação de evidência live do mesmo candidato |
+| `make release-check` | Gates offline completos e conferência de hash entre código, dataset, wheel e imagem; `scripts/release_check.py --live reports/run/evals.json` valida evidência live autorizada do mesmo candidato quando disponível |
 
 Base dos comandos Python: `ruff check app mcp_server tests scripts`, `ruff format --check app mcp_server tests scripts`, `mypy app mcp_server scripts`, `pytest` e `python -m build`. `make build` também instala e testa o wheel fora do checkout.
 

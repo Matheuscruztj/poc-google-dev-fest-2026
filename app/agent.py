@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from app.faq import load_chunks
 from app.metrics import Trace
-from app.resilience import Deadline, TransientFailure, run_with_retries
+from app.resilience import CircuitBreaker, CircuitOpen, Deadline, TransientFailure, run_with_retries
 from app.schemas import Session
 from app.tools import DemoTools
 
@@ -82,13 +82,47 @@ class OfflineProvider:
         schedule_intent = (
             any(
                 word in normalized
-                for word in ("agenda", "palestra", "sessão", "sessões", "depois das", "após")
+                for word in (
+                    "agenda",
+                    "palestra",
+                    "palestras",
+                    "sugira",
+                    "sessão",
+                    "sessões",
+                    "depois das",
+                    "após",
+                )
             )
             and not faq_intent
         )
         if schedule_intent:
             track = next(
-                (item.track for item in tools.sessions if item.track.casefold() in normalized), None
+                (
+                    item.track
+                    for item in tools.sessions
+                    if re.search(rf"(?<!\w){re.escape(item.track.casefold())}(?!\w)", normalized)
+                ),
+                None,
+            )
+            level_terms = {
+                "iniciante": ("iniciante", "iniciantes", "básico", "básica", "básicos", "básicas"),
+                "intermediario": (
+                    "intermediário",
+                    "intermediaria",
+                    "intermediários",
+                    "intermediárias",
+                    "intermediario",
+                    "intermediarios",
+                ),
+                "avancado": ("avançado", "avançada", "avançados", "avançadas", "avancado"),
+            }
+            level = next(
+                (
+                    value
+                    for value, terms in level_terms.items()
+                    if any(term in normalized for term in terms)
+                ),
+                None,
             )
             after = None
             match = re.search(r"(?:ap[oó]s|depois das?)\s*(\d{1,2})(?::(\d{2}))?", normalized)
@@ -96,10 +130,17 @@ class OfflineProvider:
                 after = (
                     f"2026-11-07T{int(match.group(1)):02d}:{int(match.group(2) or 0):02d}:00-03:00"
                 )
-            output = tools.list_sessions(track=track, after=after)
+            output = tools.list_sessions(track=track, level=level, after=after)
             sessions = output["sessions"]
+            level_labels = {
+                "iniciante": "iniciantes",
+                "intermediario": "intermediárias",
+                "avancado": "avançadas",
+            }
+            level_label = level_labels.get(level) if level is not None else None
+            qualifier = f" {level_label}" if level_label else ""
             answer = (
-                "Encontrei estas sessões sem conflito:"
+                f"Encontrei estas sessões{qualifier} sem conflito:"
                 if sessions
                 else "Não encontrei sessões compatíveis com esses filtros."
             )
@@ -160,8 +201,9 @@ class ADKProvider:
             context = "\n".join(f"Histórico recente: {item}" for item in history[-4:])
             prompt = f"{context}\nPergunta atual: {message}" if context else message
             response_text = ""
-            input_tokens: int | None = None
-            output_tokens: int | None = None
+            input_tokens = 0
+            output_tokens = 0
+            usage_seen = False
             try:
                 events = runner.run_async(
                     user_id=user_id,
@@ -172,8 +214,12 @@ class ADKProvider:
                     async for event in events:
                         usage = getattr(event, "usage_metadata", None)
                         if usage:
-                            input_tokens = getattr(usage, "prompt_token_count", None)
-                            output_tokens = getattr(usage, "candidates_token_count", None)
+                            prompt_tokens = getattr(usage, "prompt_token_count", None)
+                            candidate_tokens = getattr(usage, "candidates_token_count", None)
+                            if isinstance(prompt_tokens, int) and isinstance(candidate_tokens, int):
+                                input_tokens += prompt_tokens
+                                output_tokens += candidate_tokens
+                                usage_seen = True
                         if event.is_final_response() and event.content and event.content.parts:
                             response_text = "".join(part.text or "" for part in event.content.parts)
             finally:
@@ -181,8 +227,8 @@ class ADKProvider:
             if not response_text:
                 raise ProviderError("O modelo encerrou sem uma resposta final.")
             return response_text, {
-                "input_tokens": locals().get("input_tokens"),
-                "output_tokens": locals().get("output_tokens"),
+                "input_tokens": input_tokens if usage_seen else None,
+                "output_tokens": output_tokens if usage_seen else None,
             }
         except TimeoutError as exc:
             raise TransientProviderError(
@@ -207,6 +253,7 @@ class SingleAgent:
         mode: str,
         model: str,
         timeout_seconds: int = 12,
+        circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         self.sessions = sessions
         self.tools = DemoTools(sessions)
@@ -214,6 +261,7 @@ class SingleAgent:
         self.mode = mode
         self.model = model
         self.timeout_seconds = timeout_seconds
+        self.circuit_breaker = circuit_breaker
 
     async def ask(self, message: str, history: list[str] | None = None) -> AgentResult:
         trace = Trace(self.mode, self.model, PROMPT_VERSION)
@@ -223,15 +271,42 @@ class SingleAgent:
         start = time.monotonic()
         raw: str | None = None
         retries = 0
+        provider_calls = 0
+        input_token_total = 0
+        output_token_total = 0
+        usage_complete = True
+
+        async def invoke_provider() -> tuple[str, dict[str, int | None]]:
+            nonlocal provider_calls, input_token_total, output_token_total, usage_complete
+            provider_calls += 1
+            try:
+                response, usage = await self.provider.respond(message, tools, history or [])
+            except BaseException:
+                usage_complete = False
+                raise
+            input_tokens = usage.get("input_tokens")
+            output_tokens = usage.get("output_tokens")
+            if input_tokens is None or output_tokens is None:
+                usage_complete = False
+            else:
+                input_token_total += input_tokens
+                output_token_total += output_tokens
+            return response, usage
+
         try:
+            if self.circuit_breaker:
+                self.circuit_breaker.allow()
             (raw_response, usage), retries = await run_with_retries(
-                lambda: self.provider.respond(message, tools, history or []),
+                invoke_provider,
                 Deadline(self.timeout_seconds),
                 retry_if=lambda exc: isinstance(exc, TransientFailure),
             )
             raw = raw_response
-            trace.input_tokens = usage.get("input_tokens")
-            trace.output_tokens = usage.get("output_tokens")
+            if self.circuit_breaker:
+                self.circuit_breaker.success()
+            trace.provider_calls = provider_calls
+            trace.input_tokens = input_token_total if usage_complete else None
+            trace.output_tokens = output_token_total if usage_complete else None
             trace.retries = retries
             for tool_name in tools.calls:
                 trace.record_tool(tool_name)
@@ -270,7 +345,7 @@ class SingleAgent:
                     raise ValueError("O agente retornou sessões com conflito de horário.")
             if proposal is not None and (not isinstance(proposal, str) or proposal not in ids):
                 raise ValueError("A proposta deve referenciar uma sessão apresentada.")
-            known_chunks = {(chunk.document, chunk.section): chunk.text for chunk in load_chunks()}
+            known_chunks = {(chunk.document, chunk.section): chunk for chunk in load_chunks()}
             if not isinstance(source_records, list) or len(source_records) > 3:
                 raise ValueError("Formato de fontes inválido.")
             sources: list[dict[str, str]] = []
@@ -288,18 +363,41 @@ class SingleAgent:
                 if not isinstance(excerpt_value, str):
                     raise ValueError("O trecho da fonte precisa ser texto.")
                 excerpt = excerpt_value[:700]
-                if excerpt and excerpt not in known_chunks[pair]:
+                chunk = known_chunks[pair]
+                if excerpt and excerpt not in chunk.text:
                     raise ValueError("O trecho citado não corresponde ao documento publicado.")
-                sources.append({"document": pair[0], "section": pair[1], "excerpt": excerpt})
+                sources.append(
+                    {
+                        "document": pair[0],
+                        "section": pair[1],
+                        "excerpt": excerpt,
+                        "version": str(chunk.version),
+                        "updated_at": chunk.updated_at,
+                        "status": chunk.status,
+                        "valid_from": str(chunk.valid_from),
+                        "valid_until": str(chunk.valid_until or ""),
+                    }
+                )
             trace_event = trace.finish(status="ok", raw_output=raw, validated=True, fallback=False)
             trace_event["duration_ms"] = round((time.monotonic() - start) * 1000, 2)
+            trace_event["circuit_state"] = (
+                self.circuit_breaker.state.value if self.circuit_breaker else "unconfigured"
+            )
             return AgentResult(parsed["answer"], ids, sources, proposal, self.mode, trace_event)
-        except (ProviderError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
+        except (CircuitOpen, ProviderError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
+            if self.circuit_breaker and not isinstance(exc, CircuitOpen):
+                self.circuit_breaker.failure()
+            trace.provider_calls = provider_calls
+            trace.input_tokens = input_token_total if usage_complete and provider_calls else None
+            trace.output_tokens = output_token_total if usage_complete and provider_calls else None
             trace.retries = retries
             for tool_name in tools.calls:
                 trace.record_tool(tool_name)
             trace_event = trace.finish(
                 status="error", raw_output=raw, validated=False, fallback=True
+            )
+            trace_event["circuit_state"] = (
+                self.circuit_breaker.state.value if self.circuit_breaker else "unconfigured"
             )
             message_text = (
                 "O guia não conseguiu concluir essa resposta. "
@@ -361,7 +459,12 @@ class OllamaProvider:
             content = result.get("message", {}).get("content")
             if not isinstance(content, str) or not content:
                 raise ProviderError("O modelo local retornou uma resposta vazia.")
-            return content, {"input_tokens": None, "output_tokens": None}
+            input_tokens = result.get("prompt_eval_count")
+            output_tokens = result.get("eval_count")
+            return content, {
+                "input_tokens": input_tokens if isinstance(input_tokens, int) else None,
+                "output_tokens": output_tokens if isinstance(output_tokens, int) else None,
+            }
 
         try:
             return await asyncio.wait_for(asyncio.to_thread(invoke), timeout=self.timeout_seconds)
@@ -377,6 +480,7 @@ def make_agent(
     timeout_seconds: int = 12,
     ollama_base_url: str = "http://127.0.0.1:11434",
     ollama_model: str = "qwen2.5:3b",
+    circuit_breaker: CircuitBreaker | None = None,
 ) -> SingleAgent:
     if mode == "live":
         if not api_key:
@@ -392,6 +496,7 @@ def make_agent(
         mode,
         ollama_model if mode == "local" else model,
         timeout_seconds=timeout_seconds if mode != "local" else max(timeout_seconds, 65),
+        circuit_breaker=circuit_breaker,
     )
 
 

@@ -16,13 +16,20 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from candidate import candidate_digest  # noqa: E402
+
 from app.agent import PROMPT_VERSION, make_agent  # noqa: E402
 from app.agents.coordinator import COORDINATOR_PROMPT_VERSION, CoordinatorAgent  # noqa: E402
 from app.data_validation import load_session_seed  # noqa: E402
-from app.evaluators import evaluate_case, load_cases, run_case  # noqa: E402
+from app.evaluators import evaluate_case, execute_case_state, load_cases, run_case  # noqa: E402
 from app.schemas import Session  # noqa: E402
 from app.storage import Storage  # noqa: E402
-from evals.harness import multi_failure_result, single_agent_for_case  # noqa: E402
+from evals.harness import (  # noqa: E402
+    exercise_faq_contamination_fixture,
+    exercise_mcp_process_failures,
+    multi_failure_result,
+    single_agent_for_case,
+)
 
 
 def digest(path: Path) -> str:
@@ -47,6 +54,7 @@ async def compare(rounds: int, database: Path) -> int:
     )
     report: dict[str, Any] = {
         "run_id": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8],
+        "candidate_sha256": candidate_digest(),
         "created_at": datetime.now(UTC).isoformat(),
         "mode": "offline-paired",
         "dataset_sha256": digest(dataset),
@@ -56,6 +64,8 @@ async def compare(rounds: int, database: Path) -> int:
             "multi": {"prompt_version": COORDINATOR_PROMPT_VERSION, "transport": "MCP stdio"},
         },
         "rounds_requested": rounds,
+        "mcp_process_failures": await exercise_mcp_process_failures(),
+        "faq_contamination_fixture": exercise_faq_contamination_fixture(),
         "attempts": [],
     }
     for round_number in range(1, rounds + 1):
@@ -68,6 +78,7 @@ async def compare(rounds: int, database: Path) -> int:
                     result = multi_failure_result(str(case["category"]))
                 else:
                     result = await run_case(agent, case)
+                execute_case_state(case, result, sessions)
                 verdict = evaluate_case(case, result)
                 report["attempts"].append(
                     {
@@ -109,7 +120,11 @@ async def compare(rounds: int, database: Path) -> int:
         for category in sorted({case["category"] for case in cases})
     ]
     report["human_review_required"] = True
-    report["passed"] = all(item["evaluation"]["passed"] for item in report["attempts"])
+    report["passed"] = (
+        all(item["evaluation"]["passed"] for item in report["attempts"])
+        and all(item.get("handled") for item in report["mcp_process_failures"].values())
+        and report["faq_contamination_fixture"]["passed"]
+    )
     out_dir = ROOT / "reports" / report["run_id"]
     out_dir.mkdir(parents=True, exist_ok=False)
     (out_dir / "comparison.json").write_text(

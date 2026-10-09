@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -21,9 +22,34 @@ FAQ_AGENT_PROMPT_VERSION = "eventops-faq-specialist-v1"
 
 
 def schedule_query(message: str, sessions: list[Session]) -> dict[str, Any]:
-    normalized = message.casefold()
-    track = next((item.track for item in sessions if item.track.casefold() in normalized), None)
-    level = next((item.level for item in sessions if item.level.casefold() in normalized), None)
+    normalized = unicodedata.normalize("NFKD", message.casefold())
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    normalized = re.sub(r"\bdev\b", "desenvolvimento", normalized)
+
+    def normalize_track(value: str) -> str:
+        return unicodedata.normalize("NFKD", value.casefold()).encode("ascii", "ignore").decode()
+
+    track = next(
+        (
+            item.track
+            for item in sessions
+            if re.search(rf"\b{re.escape(normalize_track(item.track))}\b", normalized)
+        ),
+        None,
+    )
+    level_aliases = {
+        "iniciante": r"\biniciant(?:e|es)\b",
+        "intermediario": r"\bintermediari(?:o|a|os|as)\b",
+        "avancado": r"\bavancad(?:o|a|os|as)\b",
+    }
+    level = next(
+        (
+            item.level
+            for item in sessions
+            if re.search(level_aliases[item.level.casefold()], normalized)
+        ),
+        None,
+    )
     match = re.search(r"(?:ap[oó]s|depois das?)\s*(\d{1,2})(?::(\d{2}))?", normalized)
     after = None
     if match:

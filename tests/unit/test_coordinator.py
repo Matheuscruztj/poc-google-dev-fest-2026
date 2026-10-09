@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.agent import ProviderError
-from app.agents.coordinator import CoordinatorAgent, DelegationBudget
+from app.agents.coordinator import CoordinatorAgent, DelegationBudget, schedule_query
 from app.resilience import CircuitBreaker
 
 pytestmark = pytest.mark.usefixtures("mcp_database")
@@ -70,3 +70,13 @@ def test_multi_schema_is_additive_and_single_remains_default():
     assert ChatRequest(message="oi").architecture == "single"
     with pytest.raises(ValidationError):
         ChatRequest(message="oi", architecture="other")
+
+
+def test_schedule_query_normalizes_track_aliases_and_level_inflections(sessions):
+    query = schedule_query("Sugira palestra iniciante de Desenvolvimento", sessions)
+    assert query["track"] == "Desenvolvimento"
+    assert query["level"] == "iniciante"
+
+    query = schedule_query("Sessões intermediárias de IA", sessions)
+    assert query["track"] == "IA"
+    assert query["level"] == "intermediario"

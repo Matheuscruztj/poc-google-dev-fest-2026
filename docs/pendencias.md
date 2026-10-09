@@ -28,13 +28,13 @@ sessão, sem job periódico. Persistência local não aprova G6 cloud.
 |---|---|---|---|---|
 | F01 | Alta | Pendente | Providers de modelo para coordenador/especialistas: Gemini e Ollama multi retornam indisponibilidade. | Implementar providers, permissões, orçamentos e histórico; validar contratos com modelos controlados. A chave sozinha não entrega a funcionalidade. W4.3. |
 | F02 | Alta | Pendente | Runner pareado suporta somente offline. | Selecionar provider/modelo, controlar consumo e preservar tentativas das duas arquiteturas. Executar Gemini exige chave/quota. W4.6. |
-| F03 | Alta | Pendente | Single offline ignora nível solicitado no chat. Desenvolvimento iniciante inclui `S05`, intermediário. | Extrair/aplicar nível e verificar resultados fixos para cada nível. `app/agent.py: OfflineProvider.respond`. |
-| F04 | Alta | Pendente | Avaliador aceita trilha/nível/horário errados e não exige três opções disponíveis. O pedido de três IA após 14h aceita uma sessão de outra trilha. | Expectativas explícitas; verificar filtros, quantidade e conflitos independentemente do seletor; respostas erradas devem reprovar. G4, `app/evaluators.py`, `evals/cases.jsonl`. |
-| F05 | Alta | Pendente | Runner executa somente chat; passos UI/API e estado inicial de reservas não são aplicados. Contador do agente não observa escritas no banco. | Executar interações em banco isolado por caso; observar preview, confirmação, capacidade, idempotência e efeitos reais. W3.6, `app/evaluators.py: run_case`. |
-| F06 | Alta | Pendente | Breaker Gemini/Ollama, controle de retries internos do SDK e harness de atraso/encerramento abrupto de MCP ausentes. Comparativo multi usa resultado pronto para falhas. | Dependência de modelo controlada e falha de processo real; verificar deadline, tentativas, lifecycle e fallback. W5.1–W5.3, `evals/harness.py`. |
-| F07 | Média | Pendente | FinOps: custos sempre `None`, mesmo com tokens; falta consumo de todas as chamadas/tentativas e dashboard local. | Somar consumo disponível, aplicar tabela datada de preços, distinguir desconhecido/zero e mostrar sucesso/duração/consumo/custo por tarefa. Preços/medições remotos ficam fora desta revisão. Visão §11, W5.6. |
-| F08 | Média | Pendente | Chunks FAQ sem versão/data estruturadas; faltam regras desatualizadas/conflitantes e injection indireta por trecho recuperado. | Propagar metadados e recuperar fixtures contaminadas isoladas; verificar abstenção/citação e ausência de ações proibidas. Visão §7–8, G4. |
-| F09 | Média | Pendente | `make release-check` previsto nos gates não existe; falta conferência de hashes/evidências do mesmo candidato. | Conferir código/dados/prompts/configuração/wheel/imagem; recusar evidência ausente/divergente. Aprovação live exige execução autorizada. W5.7. |
+| F03 | Alta | Concluído local | Single offline extrai e aplica nível solicitado, inclusive formas acentuadas e plurais; trilha é reconhecida por palavra inteira. | `app/agent.py: OfflineProvider.respond`; casos fixos em `tests/unit/test_agent.py`. |
+| F04 | Alta | Concluído local | Casos de agenda declaram trilha, nível, horário e quantidade; avaliador confere filtros, mínimo/exato e conflitos contra o catálogo. O pedido de três opções após 14h exige três resultados. | `app/evaluators.py`, `evals/cases.jsonl`. |
+| F05 | Alta | Concluído local | Cada caso usa SQLite isolado e executa passos por HTTP com cookie/origem; cobre prévia abandonada sem confirmação, token inválido, capacidade esgotada, confirmação e replay idempotente. Estado persistido é lido ao final. | `app/evaluators.py: execute_case_state`, `scripts/run_evals.py`, `scripts/run_comparison.py`, casos `adv-duplicate` e `adv-last-seat`. O browser real continua coberto pelo gate E2E, fora do replay de eval. |
+| F06 | Alta | Parcial local | Breaker compartilhado por processo protege providers single (incluindo Ollama) e o breaker MCP existente protege o multi. Harness de eval sobe subprocessos MCP reais para timeout e saída abrupta e registra o lifecycle. | `app/agent.py`, `app/main.py`, `app/mcp_client.py`, `evals/harness.py`, `evals/mcp_failure_server.py`. Controle de retries internos do SDK Gemini depende da integração Gemini por API, ainda adiada. |
+| F07 | Média | Concluído local | Tokens medidos pelo Ollama/ADK são agregados por chamada/retry; métricas mostram cobertura parcial, sucesso, duração, chamadas e custo por tarefa. Tabela datada identifica custo zero offline e mantém custo de compute local/desconhecido como indisponível. Dashboard HTML local é gerado junto ao JSON. | `app/agent.py`, `app/data/model_prices.json`, `app/metrics.py`, `scripts/report_metrics.py`. Preço Gemini será preenchido quando a integração por API for adaptada. |
+| F08 | Média | Concluído local | Metadados estruturados de versão, atualização, validade, status, conflito e confiança são validados e chegam às citações. Retrieval exclui regras futuras, expiradas, conflitantes e não confiáveis; fixture contaminada isolada exige abstenção. | `app/data/faq_metadata.json`, `app/data_validation.py`, `app/faq.py`, `evals/harness.py`, `tests/fixtures/adversarial/faq_poisoned_chunk.json`. A fixture não entra no catálogo publicado. |
+| F09 | Média | Concluído local | `make release-check` executa gates offline, build e Compose; compara hash do candidato em eval/build/imagem, dataset/catálogo, wheel/sdist e digest Docker, falhando com evidência ausente ou divergente. | `scripts/candidate.py`, `scripts/release_check.py`, `scripts/check_build.py`, `scripts/check_compose.py`, `Makefile`. Gate live continua separado e exige execução autorizada. |
 
 ## Validações e materiais restantes
 
@@ -49,27 +49,28 @@ sessão, sem job periódico. Persistência local não aprova G6 cloud.
 - Dataset atual: 40 casos, 20 normais e 20 adversariais. O bloqueio histórico de
   Playwright não representa a validação aprovada em 2026-10-09.
 
-## Validação das mudanças de sessões
+## Validação das mudanças de sessões e F05–F09
 
-**Resultado local em 2026-10-09:** `make pre-push` completo aprovado: Ruff,
-formatação, ESLint, mypy, 129 testes sem navegador, três testes E2E, cobertura de
-branches exigida, 40/40 evals offline, wheel instalado fora do checkout e smoke
-Compose com catálogo/MCP, histórico/identidade e recibo após reinício.
-`make postgres-check` aprovou migrations repetidas, histórico/leases em conexões
-independentes, idempotência e disputa da última vaga. `make eval-compare`
-aprovou 40/40 casos por arquitetura em cada uma das três rodadas.
+**Resultado local em 2026-10-09:** `make release-check` aprovado no candidato
+`d41a164b016395eb5a998809e21812c1da0a874a4bc557de35526155f9739aa1`: Ruff,
+formatação, ESLint, mypy, 137 testes sem navegador, cobertura de branches (FAQ
+87,5%), três testes E2E, 40/40 evals offline, wheel/sdist e smoke Compose com
+catálogo/MCP, histórico/identidade e reinício. `make postgres-check` aprovou
+migrations, histórico/leases, idempotência e disputa da última vaga.
+`make eval-compare` aprovou 40/40 casos por arquitetura em cada uma das três
+rodadas; a fixture adversarial RAG, abstenção, citação e metadados passaram.
 
 Relatórios locais, ignorados pelo Git: `reports/build.json`,
-`reports/20261009T043229Z-8e0dba0f/evals.json` e
-`reports/20261009T043003Z-994fdb42/comparison.json`. Logs do pre-push:
-`/tmp/eventops-session-pre-push.log`. Esses resultados não aprovam F01–F09,
-qualidade live G4 nem operação cloud G6.
+`reports/20261009T045651Z-a9e6ea93/evals.json`,
+`reports/20261009T045738Z-ad08922e/comparison.json` e
+`reports/compose.json`. O release-check confirmou hashes do candidato e dos
+artefatos. Esses resultados locais não aprovam qualidade live G4 nem operação
+cloud G6.
 
 ```bash
-make lint typecheck test e2e eval-offline PYTHON=.venv/bin/python
+make release-check PYTHON=.venv/bin/python
 make postgres-check PYTHON=.venv/bin/python
 make eval-compare PYTHON=.venv/bin/python
-make build compose-check PYTHON=.venv/bin/python
 ```
 
 PostgreSQL/Compose usam recursos locais descartáveis. Contratos verificam

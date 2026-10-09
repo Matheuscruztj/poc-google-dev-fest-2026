@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "documents": {
+    "acessibilidade.md": {
+      "version": 1,
+      "updated_at": "2026-10-01",
+      "valid_from": "2026-10-01",
+      "valid_until": null,
+      "status": "current",
+      "trusted": true,
+      "conflict_group": null
+    },
+    "alimentacao.md": {
+      "version": 1,
+      "updated_at": "2026-10-01",
+      "valid_from": "2026-10-01",
+      "valid_until": null,
+      "status": "current",
+      "trusted": true,
+      "conflict_group": null
+    },
+    "cancelamento.md": {
+      "version": 1,
+      "updated_at": "2026-10-01",
+      "valid_from": "2026-10-01",
+      "valid_until": null,
+      "status": "current",
+      "trusted": true,
+      "conflict_group": null
+    },
+    "conduta.md": {
+      "version": 1,
+      "updated_at": "2026-10-01",
+      "valid_from": "2026-10-01",
+      "valid_until": null,
+      "status": "current",
+      "trusted": true,
+      "conflict_group": null
+    },
+    "horarios.md": {
+      "version": 1,
+      "updated_at": "2026-10-01",
+      "valid_from": "2026-10-01",
+      "valid_until": null,
+      "status": "current",
+      "trusted": true,
+      "conflict_group": null
+    },
+    "inscricao.md": {
+      "version": 1,
+      "updated_at": "2026-10-01",
+      "valid_from": "2026-10-01",
+      "valid_until": null,
+      "status": "current",
+      "trusted": true,
+      "conflict_group": null
+    },
+    "reservas.md": {
+      "version": 1,
+      "updated_at": "2026-10-01",
+      "valid_from": "2026-10-01",
+      "valid_until": null,
+      "status": "current",
+      "trusted": true,
+      "conflict_group": null
+    },
+    "trilhas.md": {
+      "version": 1,
+      "updated_at": "2026-10-01",
+      "valid_from": "2026-10-01",
+      "valid_until": null,
+      "status": "current",
+      "trusted": true,
+      "conflict_group": null
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "version": "2026-10-09",
+  "currency": "USD",
+  "providers": {
+    "offline": {
+      "billing": "fixed_zero",
+      "input_per_million": 0,
+      "output_per_million": 0
+    },
+    "ollama": {
+      "billing": "local_compute_unpriced",
+      "input_per_million": null,
+      "output_per_million": null
+    },
+    "live": {
+      "billing": "not_configured",
+      "input_per_million": null,
+      "output_per_million": null
+    }
+  }
+}

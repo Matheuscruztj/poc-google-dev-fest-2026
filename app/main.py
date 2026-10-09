@@ -41,6 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     sessions = sessions_from_records(storage.list_sessions())
     reservation_service = ReservationService(storage, config.confirmation_ttl_seconds)
     mcp_breaker = CircuitBreaker()
+    provider_breaker = CircuitBreaker()
     trace_dir = Path("/tmp/eventops") if config.database_url else config.database.parent
     configure_file_logging(trace_dir / "agent-traces.jsonl")
     chat_sessions = ChatSessions(storage)
@@ -55,6 +56,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.sessions = sessions
     application.state.reservations = reservation_service
     application.state.mcp_breaker = mcp_breaker
+    application.state.provider_breaker = provider_breaker
     application.state.chat_sessions = chat_sessions
 
     @application.middleware("http")
@@ -210,6 +212,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 config.agent_timeout_seconds,
                 config.ollama_base_url,
                 config.ollama_model,
+                provider_breaker,
             )
         )
         owner, history = chat_sessions.acquire(browser_session)

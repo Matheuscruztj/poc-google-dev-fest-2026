@@ -100,7 +100,11 @@ faqForm.addEventListener('submit', async (event) => {
       const title = element('div', 'source-title');
       title.append(document.createTextNode(`${source.section} `));
       title.append(element('span', '', `· ${source.document}`));
-      card.append(title, element('p', 'source-excerpt', source.excerpt));
+      card.append(
+        title,
+        element('p', 'source-meta', `Versão ${source.version} · ${source.status} · válido desde ${source.valid_from || '—'} · atualizado em ${source.updated_at}`),
+        element('p', 'source-excerpt', source.excerpt),
+      );
       faqResults.append(card);
     }
   } catch (error) { faqResults.replaceChildren(element('p', 'faq-answer', error.message)); }
@@ -121,7 +125,11 @@ byId('chat-form').addEventListener('submit', async (event) => {
     output.append(answer);
     for (const source of result.sources || []) {
       const card = element('article', 'source-card');
-      card.append(element('div', 'source-title', `${source.section} · ${source.document}`), element('p', 'source-excerpt', source.excerpt));
+      card.append(
+        element('div', 'source-title', `${source.section} · ${source.document}`),
+        element('p', 'source-meta', `Versão ${source.version} · ${source.status} · válido desde ${source.valid_from || '—'} · atualizado em ${source.updated_at}`),
+        element('p', 'source-excerpt', source.excerpt),
+      );
       output.append(card);
     }
     if (result.session_ids?.length) {

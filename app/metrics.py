@@ -46,6 +46,7 @@ class Trace:
         self.started = time.monotonic()
         self.calls = 0
         self.retries = 0
+        self.provider_calls = 0
         self.tools: list[str] = []
         self.input_tokens: int | None = None
         self.output_tokens: int | None = None
@@ -65,6 +66,7 @@ class Trace:
             "duration_ms": round((time.monotonic() - self.started) * 1000, 2),
             "tool_calls": self.calls,
             "retries": self.retries,
+            "provider_calls": self.provider_calls,
             "tools": self.tools,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,

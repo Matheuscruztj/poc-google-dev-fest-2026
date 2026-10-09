@@ -16,11 +16,17 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from candidate import candidate_digest  # noqa: E402
+
 from app.agent import PROMPT_VERSION, make_agent  # noqa: E402
-from app.evaluators import evaluate_case, load_cases, run_case  # noqa: E402
+from app.evaluators import evaluate_case, execute_case_state, load_cases, run_case  # noqa: E402
 from app.faq import load_chunks  # noqa: E402
 from app.schemas import Session  # noqa: E402
-from evals.harness import single_agent_for_case  # noqa: E402
+from evals.harness import (  # noqa: E402
+    exercise_faq_contamination_fixture,
+    exercise_mcp_process_failures,
+    single_agent_for_case,
+)
 
 
 def sha256(path: Path) -> str:
@@ -74,13 +80,18 @@ async def run(args: argparse.Namespace) -> int:
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
     report: dict[str, Any] = {
         "run_id": run_id,
+        "candidate_sha256": candidate_digest(),
         "created_at": datetime.now(UTC).isoformat(),
         "mode": args.mode,
+        "live_authorized": args.mode == "live" and args.confirm_live,
+        "max_requests_configured": args.max_requests,
         "model": args.model,
         "prompt_version": PROMPT_VERSION,
         "dataset_sha256": sha256(dataset_path),
         "catalog_sha256": sha256(ROOT / "app/data/sessions.json"),
         "faq_documents": sorted({chunk.document for chunk in load_chunks()}),
+        "mcp_process_failures": await exercise_mcp_process_failures(),
+        "faq_contamination_fixture": exercise_faq_contamination_fixture(),
         "rounds_requested": args.rounds,
         "rounds_completed": 0,
         "attempts": [],
@@ -91,6 +102,7 @@ async def run(args: argparse.Namespace) -> int:
         for case in cases:
             case_agent = single_agent_for_case(sessions, case, agent)
             result = await run_case(case_agent, case)
+            execute_case_state(case, result, sessions)
             evaluation = evaluate_case(case, result)
             report["attempts"].append(
                 {
@@ -105,7 +117,7 @@ async def run(args: argparse.Namespace) -> int:
                     "sources": result.sources,
                     "reservation_proposal": result.reservation_proposal,
                     "trajectory": result.trace.get("tools", []),
-                    "reservation_writes": 0,
+                    "reservation_writes": result.trace.get("reservation_writes", 0),
                     "error": result.error,
                     "trace": result.trace,
                     "evaluation": evaluation,
@@ -172,8 +184,11 @@ async def run(args: argparse.Namespace) -> int:
             }
         )
     report["round_gates"] = round_gates
-    report["passed"] = len(round_gates) == args.rounds and all(
-        item["passed"] for item in round_gates
+    report["passed"] = (
+        len(round_gates) == args.rounds
+        and all(item["passed"] for item in round_gates)
+        and all(item.get("handled") for item in report["mcp_process_failures"].values())
+        and report["faq_contamination_fixture"]["passed"]
     )
     out_dir = ROOT / "reports" / run_id
     out_dir.mkdir(parents=True, exist_ok=False)
