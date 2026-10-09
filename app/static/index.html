@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f8f9fa">
+    <title>EventOps AI — DevFest de demonstração</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#inicio"><span class="brand-mark">E</span><span>EventOps <strong>AI</strong></span></a>
+      <nav class="main-nav" aria-label="Navegação principal">
+        <a href="#agenda">Agenda</a><a href="#faq">Dúvidas</a><a href="#assistente">Guia IA</a>
+      </nav>
+      <span class="mode-pill"><span class="status-dot"></span><span id="mode-status">DEMO OFFLINE</span></span>
+    </header>
+    <main id="inicio">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="live-mark"></span> DEVFEST 2026 <span class="eyebrow-divider">/</span> DEMO INTERATIVA</p>
+          <h1>Ideias que movem<br><span>o seu próximo passo.</span></h1>
+          <p class="hero-lede">Monte uma agenda que combina com você, encontre respostas com fontes e experimente uma reserva segura.</p>
+          <div class="hero-actions"><a class="button button-primary" href="#agenda">Explorar agenda <span aria-hidden="true">↗</span></a><a class="text-link" href="#assistente">Conhecer o guia <span aria-hidden="true">↓</span></a></div>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+          <div class="hero-center"><span>AI</span><small>EVENT<br>OPS</small></div>
+          <i class="bubble bubble-blue">✦</i><i class="bubble bubble-yellow">◎</i><i class="bubble bubble-red">↗</i><i class="bubble bubble-green">✳</i>
+          <div class="floating-card"><span class="floating-icon">✦</span><span><strong>Seu dia, do seu jeito</strong><small>Agenda sem conflitos</small></span><span class="floating-check">✓</span></div>
+          <div class="art-caption">PESSOAS · IDEIAS · CONEXÕES</div>
+        </div>
+      </section>
+
+      <section class="stats" aria-label="Sobre o evento">
+        <div><strong>20</strong><span>sessões</span></div><div><strong>06</strong><span>trilhas</span></div><div><strong>∞</strong><span>possibilidades</span></div>
+        <p>Explore sem risco.<br>Esta experiência é uma simulação.</p>
+      </section>
+
+      <section class="section" id="agenda">
+        <div class="section-heading"><div><p class="eyebrow">01 — PLANEJE SEU DIA</p><h2>Monte uma agenda sem conflitos.</h2></div><p class="section-note">Escolha uma trilha e um nível. A demonstração seleciona até três sessões compatíveis.</p></div>
+        <form id="schedule-form" class="filter-bar">
+          <label>Trilha<select id="track"><option value="">Todas as trilhas</option></select></label>
+          <label>Nível<select id="level"><option value="">Todos os níveis</option><option>iniciante</option><option>intermediario</option><option>avancado</option></select></label>
+          <label>Depois de<input id="after" type="time" value="14:00"></label>
+          <button class="button button-primary" type="submit">Sugerir agenda <span aria-hidden="true">→</span></button>
+        </form>
+        <div id="schedule-results" class="session-grid" aria-live="polite"></div>
+      </section>
+
+      <section class="section faq-section" id="faq">
+        <div class="section-heading"><div><p class="eyebrow">02 — PERGUNTE AO GUIA</p><h2>Informação com fonte.</h2></div><p class="section-note">A busca consulta oito documentos do evento e mostra de onde veio cada trecho.</p></div>
+        <form id="faq-form" class="ask-bar"><label class="sr-only" for="question">Sua pergunta</label><span class="search-icon" aria-hidden="true">⌕</span><input id="question" required minlength="2" maxlength="1000" placeholder="Ex.: quais são as opções de acessibilidade?"><button class="button button-dark" type="submit">Buscar <span aria-hidden="true">→</span></button></form>
+        <div id="faq-results" class="faq-results" aria-live="polite"></div>
+      </section>
+
+      <section class="section chat-section" id="assistente">
+        <div class="section-heading"><div><p class="eyebrow">03 — CONVERSE COM O GUIA</p><h2>Uma pergunta, fontes verificadas.</h2></div><p class="section-note">O modo offline é determinístico. O modo live usa Gemini e pode consumir sua quota de API.</p></div>
+        <form id="chat-form" class="ask-bar"><label class="sr-only" for="chat-message">Mensagem para o guia</label><span class="search-icon" aria-hidden="true">✳</span><input id="chat-message" required minlength="2" maxlength="2000" placeholder="Ex.: quero palestras de IA depois das 14h"><label class="sr-only" for="chat-architecture">Arquitetura do agente</label><select id="chat-architecture" aria-label="Arquitetura"><option value="single">Agente único</option><option value="multi">Coordenador + especialistas</option></select><button class="button button-primary" type="submit">Perguntar <span aria-hidden="true">→</span></button></form>
+        <div id="chat-results" class="chat-results" aria-live="polite"></div>
+      </section>
+
+      <section class="closing-banner"><div class="banner-symbol" aria-hidden="true">✳</div><div><p class="eyebrow">APRENDER FAZENDO</p><h2>Curiosidade é a melhor ferramenta.</h2><p>Explore, teste e veja como uma aplicação pode responder com responsabilidade.</p></div><a href="#agenda" class="button button-light">Voltar à agenda <span aria-hidden="true">↑</span></a></section>
+      <p class="disclaimer">Todas as palestras, regras e reservas são fictícias. Nenhuma inscrição real é feita.</p>
+    </main>
+    <footer><a class="brand" href="#inicio"><span class="brand-mark">E</span><span>EventOps <strong>AI</strong></span></a><span>Uma demonstração para aprender com segurança.</span><span>DEVFEST 2026</span></footer>
+
+    <dialog id="reservation-dialog" aria-labelledby="dialog-title">
+      <form method="dialog" class="dialog-close"><button aria-label="Fechar">×</button></form>
+      <p class="eyebrow">RESERVA SIMULADA</p><h2 id="dialog-title">Revise sua escolha.</h2><div id="preview-content"></div>
+      <div class="dialog-actions"><button id="cancel-reservation" class="button button-outline">Cancelar</button><button id="confirm-reservation" class="button button-primary">Confirmar reserva <span aria-hidden="true">→</span></button></div>
+      <p id="reservation-message" class="reservation-message" aria-live="polite"></p>
+    </dialog>
+  </body>
+</html>

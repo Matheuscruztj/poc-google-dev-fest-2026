@@ -1,0 +1,57 @@
+name: eventops-ai
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      EVENTOPS_MODE: offline
+      EVENTOPS_HOST: 0.0.0.0
+      EVENTOPS_PORT: 8000
+      EVENTOPS_DATABASE: /var/lib/eventops/eventops.sqlite3
+      EVENTOPS_DATABASE_URL: ${EVENTOPS_DATABASE_URL:-}
+      EVENTOPS_SEED_CATALOG: ${EVENTOPS_SEED_CATALOG:-true}
+      EVENTOPS_AGENT_MODE: ${EVENTOPS_AGENT_MODE:-offline}
+      EVENTOPS_AGENT_MODEL: ${EVENTOPS_AGENT_MODEL:-gemini-2.5-flash}
+      EVENTOPS_ALLOWED_ORIGINS: ${EVENTOPS_ALLOWED_ORIGINS:-}
+      EVENTOPS_COOKIE_SECURE: ${EVENTOPS_COOKIE_SECURE:-false}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+    ports:
+      - "${EVENTOPS_PORT:-8000}:8000"
+    volumes:
+      - eventops-data:/var/lib/eventops
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  ollama:
+    image: ollama/ollama:0.12.6
+    profiles: [local-model, gpu]
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: unless-stopped
+
+  model-init:
+    image: ollama/ollama:0.12.6
+    profiles: [local-model, gpu]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["until OLLAMA_HOST=http://ollama:11434 ollama list >/dev/null 2>&1; do sleep 2; done; OLLAMA_HOST=http://ollama:11434 ollama pull ${OLLAMA_MODEL:-qwen2.5:3b}"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_started
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: "no"
+
+volumes:
+  eventops-data:
+  ollama-models:

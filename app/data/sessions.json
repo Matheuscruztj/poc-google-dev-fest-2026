@@ -1,0 +1,22 @@
+[
+  {"id":"S01","title":"Abertura: agentes úteis e responsáveis","track":"IA","level":"iniciante","starts_at":"2026-11-07T09:00:00-03:00","ends_at":"2026-11-07T09:40:00-03:00","capacity":120},
+  {"id":"S02","title":"Python para automação de eventos","track":"Desenvolvimento","level":"iniciante","starts_at":"2026-11-07T09:45:00-03:00","ends_at":"2026-11-07T10:30:00-03:00","capacity":45},
+  {"id":"S03","title":"Primeiros passos com LLMs","track":"IA","level":"iniciante","starts_at":"2026-11-07T09:45:00-03:00","ends_at":"2026-11-07T10:30:00-03:00","capacity":50},
+  {"id":"S04","title":"APIs modernas com FastAPI","track":"Desenvolvimento","level":"intermediario","starts_at":"2026-11-07T10:30:00-03:00","ends_at":"2026-11-07T11:15:00-03:00","capacity":40},
+  {"id":"S05","title":"Busca semântica e RAG local","track":"IA","level":"intermediario","starts_at":"2026-11-07T10:35:00-03:00","ends_at":"2026-11-07T11:20:00-03:00","capacity":42},
+  {"id":"S06","title":"Acessibilidade em produtos digitais","track":"Produto","level":"iniciante","starts_at":"2026-11-07T11:20:00-03:00","ends_at":"2026-11-07T12:00:00-03:00","capacity":36},
+  {"id":"S07","title":"Segurança para aplicações com IA","track":"IA","level":"avancado","starts_at":"2026-11-07T11:25:00-03:00","ends_at":"2026-11-07T12:10:00-03:00","capacity":35},
+  {"id":"S08","title":"Design de ferramentas para agentes","track":"IA","level":"intermediario","starts_at":"2026-11-07T13:00:00-03:00","ends_at":"2026-11-07T13:45:00-03:00","capacity":44},
+  {"id":"S09","title":"Observabilidade sem sustos","track":"DevOps","level":"intermediario","starts_at":"2026-11-07T13:00:00-03:00","ends_at":"2026-11-07T13:40:00-03:00","capacity":38},
+  {"id":"S10","title":"Como avaliar respostas de modelos","track":"IA","level":"avancado","starts_at":"2026-11-07T13:50:00-03:00","ends_at":"2026-11-07T14:35:00-03:00","capacity":32},
+  {"id":"S11","title":"Agentes em produção com orçamento","track":"IA","level":"intermediario","starts_at":"2026-11-07T14:00:00-03:00","ends_at":"2026-11-07T14:45:00-03:00","capacity":46},
+  {"id":"S12","title":"MCP: contratos e ferramentas","track":"Desenvolvimento","level":"intermediario","starts_at":"2026-11-07T14:45:00-03:00","ends_at":"2026-11-07T15:30:00-03:00","capacity":40},
+  {"id":"S13","title":"Multiagentes: quando delegar","track":"IA","level":"avancado","starts_at":"2026-11-07T14:50:00-03:00","ends_at":"2026-11-07T15:35:00-03:00","capacity":34},
+  {"id":"S14","title":"Privacidade por padrão","track":"Segurança","level":"intermediario","starts_at":"2026-11-07T15:35:00-03:00","ends_at":"2026-11-07T16:20:00-03:00","capacity":30},
+  {"id":"S15","title":"Deploy enxuto no Cloud Run","track":"DevOps","level":"intermediario","starts_at":"2026-11-07T15:40:00-03:00","ends_at":"2026-11-07T16:25:00-03:00","capacity":38},
+  {"id":"S16","title":"UX para assistentes conversacionais","track":"Produto","level":"iniciante","starts_at":"2026-11-07T16:30:00-03:00","ends_at":"2026-11-07T17:10:00-03:00","capacity":40},
+  {"id":"S17","title":"Testes de segurança de agentes","track":"Segurança","level":"avancado","starts_at":"2026-11-07T16:30:00-03:00","ends_at":"2026-11-07T17:15:00-03:00","capacity":28},
+  {"id":"S18","title":"Demo: da pergunta à ferramenta","track":"IA","level":"iniciante","starts_at":"2026-11-07T17:20:00-03:00","ends_at":"2026-11-07T18:00:00-03:00","capacity":80},
+  {"id":"S19","title":"Encerramento e próximos passos","track":"Comunidade","level":"iniciante","starts_at":"2026-11-07T18:05:00-03:00","ends_at":"2026-11-07T18:30:00-03:00","capacity":120},
+  {"id":"S20","title":"Laboratório: seu primeiro agente","track":"IA","level":"intermediario","starts_at":"2026-11-07T14:00:00-03:00","ends_at":"2026-11-07T15:30:00-03:00","capacity":24}
+]
