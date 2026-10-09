@@ -18,7 +18,12 @@ services:
       EVENTOPS_COOKIE_SECURE: ${EVENTOPS_COOKIE_SECURE:-false}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_EMBEDDING_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-8192}
+      EVENTOPS_RAG_MODE: ${EVENTOPS_RAG_MODE:-lexical}
+      EVENTOPS_RAG_DATABASE_URL: ${EVENTOPS_RAG_DATABASE_URL:-}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text:latest}
     ports:
       - "${EVENTOPS_PORT:-8000}:8000"
     volumes:
@@ -33,7 +38,9 @@ services:
 
   ollama:
     image: ollama/ollama:0.12.6
-    profiles: [local-model, gpu]
+    profiles: [local-model, gpu, rag]
+    ports:
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ollama-models:/root/.ollama
     restart: unless-stopped
@@ -52,6 +59,37 @@ services:
       - ollama-models:/root/.ollama
     restart: "no"
 
+  rag-init:
+    image: ollama/ollama:0.12.6
+    profiles: [rag]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["until OLLAMA_HOST=http://ollama:11434 ollama list >/dev/null 2>&1; do sleep 2; done; OLLAMA_HOST=http://ollama:11434 ollama pull ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text:latest}"]
+    depends_on:
+      pgvector:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    restart: "no"
+
+  pgvector:
+    image: pgvector/pgvector:pg17
+    profiles: [rag]
+    environment:
+      POSTGRES_DB: eventops
+      POSTGRES_USER: eventops
+      POSTGRES_PASSWORD: ${RAG_POSTGRES_PASSWORD:-eventops-local-only}
+    ports:
+      - "127.0.0.1:${RAG_POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - eventops-rag-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventops -d eventops"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
 volumes:
   eventops-data:
   ollama-models:
+  eventops-rag-data:

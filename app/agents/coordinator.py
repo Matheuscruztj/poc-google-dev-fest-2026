@@ -110,7 +110,7 @@ class FAQAgent:
     async def run(self, message: str, budget: DelegationBudget) -> dict[str, Any]:
         budget.delegate("faq_agent")
         tools = DemoTools([])
-        result = tools.search_policy(message)
+        result = await asyncio.to_thread(tools.search_policy, message)
         budget.record_tool("faq.search_policy")
         return result
 

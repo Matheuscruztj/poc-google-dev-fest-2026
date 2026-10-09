@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 from uuid import uuid4
 
-from app.faq import load_chunks
+from app.faq import hybrid_enabled, load_chunks, search_faq
 from app.metrics import Trace
 from app.resilience import CircuitBreaker, CircuitOpen, Deadline, TransientFailure, run_with_retries
 from app.schemas import Session
@@ -25,6 +25,57 @@ Ao recomendar sessões, use IDs retornados pela ferramenta e evite conflitos. Re
 com JSON: {"answer": string, "session_ids": string[], "sources": [{"document": string,
 "section": string, "excerpt": string}], "reservation_proposal": string|null}. Uma proposta
 somente aponta uma sessão e depende de confirmação explícita posterior na interface."""
+
+
+def ollama_response_schema(
+    tools: DemoTools, faq_context: object, *, allow_sessions: bool = True
+) -> dict[str, Any]:
+    source_pairs: set[tuple[str, str]] = set()
+    if isinstance(faq_context, list):
+        for item in faq_context:
+            if isinstance(item, dict):
+                document, section = item.get("document"), item.get("section")
+            else:
+                document = getattr(item, "document", None)
+                section = getattr(item, "section", None)
+            if isinstance(document, str) and isinstance(section, str):
+                source_pairs.add((document, section))
+    session_ids = sorted(item.id for item in tools.sessions) if allow_sessions else []
+    documents = sorted({document for document, _ in source_pairs})
+    sections = sorted({section for _, section in source_pairs})
+    session_property = {
+        "type": "array",
+        "items": {"type": "string", "enum": session_ids} if allow_sessions else {"type": "string"},
+        "maxItems": 3 if allow_sessions else 0,
+    }
+    source_property = {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "document": {"type": "string", **({"enum": documents} if documents else {})},
+                "section": {"type": "string", **({"enum": sections} if sections else {})},
+                "excerpt": {"type": "string"},
+            },
+            "required": ["document", "section", "excerpt"],
+            "additionalProperties": False,
+        },
+        "maxItems": 3 if source_pairs else 0,
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "answer": {"type": "string"},
+            "session_ids": session_property,
+            "sources": source_property,
+            "reservation_proposal": {
+                "type": ["string", "null"],
+                "enum": [*session_ids, None],
+            },
+        },
+        "required": ["answer", "session_ids", "sources", "reservation_proposal"],
+        "additionalProperties": False,
+    }
 
 
 class ProviderError(RuntimeError):
@@ -159,7 +210,7 @@ class OfflineProvider:
                 },
                 ensure_ascii=False,
             ), {"input_tokens": None, "output_tokens": None}
-        faq = tools.search_policy(message)
+        faq = await asyncio.to_thread(tools.search_policy, message)
         sources = faq["sources"]
         answer = str(faq["answer"])
         return json.dumps(
@@ -311,9 +362,16 @@ class SingleAgent:
             for tool_name in tools.calls:
                 trace.record_tool(tool_name)
             parsed = json.loads(raw_response)
+            response_keys = {
+                "answer",
+                "session_ids",
+                "sources",
+                "reservation_proposal",
+            }
             if (
                 not isinstance(parsed, dict)
-                or set(parsed) != {"answer", "session_ids", "sources", "reservation_proposal"}
+                or not set(parsed).issubset(response_keys)
+                or "answer" not in parsed
                 or not isinstance(parsed.get("answer"), str)
                 or not parsed["answer"].strip()
                 or len(parsed["answer"]) > 4000
@@ -409,10 +467,13 @@ class SingleAgent:
 class OllamaProvider:
     """Local Ollama provider using its chat endpoint and strict JSON output."""
 
-    def __init__(self, base_url: str, model: str, timeout_seconds: int = 60) -> None:
+    def __init__(
+        self, base_url: str, model: str, timeout_seconds: int = 60, context_length: int = 8192
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout_seconds = timeout_seconds
+        self.context_length = context_length
 
     async def respond(
         self, message: str, tools: DemoTools, history: list[str]
@@ -420,13 +481,32 @@ class OllamaProvider:
         from urllib.error import URLError
         from urllib.request import Request, urlopen
 
+        faq_context: object = load_chunks()
+        if hybrid_enabled():
+            retrieved = await asyncio.to_thread(search_faq, message)
+            faq_context = retrieved.get("sources", [])
+        normalized_message = message.casefold()
+        allow_sessions = any(
+            phrase in normalized_message
+            for phrase in (
+                "agenda",
+                "sugira",
+                "sugestão",
+                "recomende",
+                "monte uma agenda",
+                "listar palestras",
+                "palestras depois das",
+                "sessões depois das",
+            )
+        )
+        response_schema = ollama_response_schema(tools, faq_context, allow_sessions=allow_sessions)
         system = (
             SYSTEM_INSTRUCTION
             + "\nFerramentas de leitura disponíveis: "
             + json.dumps(
                 {
                     "sessions": [item.model_dump(mode="json") for item in tools.sessions],
-                    "faq": load_chunks(),
+                    "faq": faq_context,
                 },
                 ensure_ascii=False,
                 default=lambda item: item.__dict__,
@@ -439,7 +519,18 @@ class OllamaProvider:
         )
         messages.append({"role": "user", "content": message})
         body = json.dumps(
-            {"model": self.model, "messages": messages, "format": "json", "stream": False}
+            {
+                "model": self.model,
+                "messages": messages,
+                "format": response_schema,
+                "think": False,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                    "num_predict": 700,
+                    "num_ctx": self.context_length,
+                },
+            }
         ).encode()
         request = Request(
             f"{self.base_url}/api/chat",
@@ -481,13 +572,16 @@ def make_agent(
     ollama_base_url: str = "http://127.0.0.1:11434",
     ollama_model: str = "qwen2.5:3b",
     circuit_breaker: CircuitBreaker | None = None,
+    ollama_context_length: int = 8192,
 ) -> SingleAgent:
     if mode == "live":
         if not api_key:
             raise ValueError("O modo live exige GOOGLE_API_KEY.")
         provider: AgentProvider = ADKProvider(api_key, model, timeout_seconds)
     elif mode == "local":
-        provider = OllamaProvider(ollama_base_url, ollama_model, max(timeout_seconds, 60))
+        provider = OllamaProvider(
+            ollama_base_url, ollama_model, max(timeout_seconds, 60), ollama_context_length
+        )
     else:
         provider = OfflineProvider()
     return SingleAgent(

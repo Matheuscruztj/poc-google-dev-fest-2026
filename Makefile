@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: setup run lint typecheck test e2e build compose-check postgres-check check pre-push release-check compose-up compose-down compose-logs eval-offline eval-live eval-compare report-metrics
+.PHONY: setup run lint typecheck test e2e build compose-check postgres-check check pre-push release-check compose-up compose-down compose-logs eval-offline eval-live eval-compare eval-rag report-metrics
 
 setup:
 	$(PYTHON) -c 'import sys; assert sys.version_info[:2] == (3, 11), "Use Python 3.11"'
@@ -57,6 +57,9 @@ eval-live:
 
 eval-compare:
 	$(PYTHON) scripts/run_comparison.py --rounds 3
+
+eval-rag:
+	$(PYTHON) scripts/eval_rag.py --mode "$${RAG_EVAL_MODE:-lexical}"
 
 report-metrics:
 	@test -n "$(REPORT)" || (echo 'Use make report-metrics REPORT=reports/run/comparison.json' && exit 2)

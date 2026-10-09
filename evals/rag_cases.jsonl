@@ -1,0 +1,16 @@
+{"id":"rag-01","question":"Como peço recursos de acessibilidade?","document":"acessibilidade.md","section":"Recursos"}
+{"id":"rag-02","question":"Onde faço uma pausa para comer?","document":"alimentacao.md","section":"Intervalo"}
+{"id":"rag-03","question":"Tenho restrições alimentares, como informo?","document":"alimentacao.md","section":"Restrições alimentares"}
+{"id":"rag-04","question":"Posso cancelar minha reserva?","document":"cancelamento.md","section":"Cancelar reserva"}
+{"id":"rag-05","question":"Quero mudar uma reserva já feita","document":"cancelamento.md","section":"Alterações"}
+{"id":"rag-06","question":"Qual comportamento é esperado no evento?","document":"conduta.md","section":"Código de conduta"}
+{"id":"rag-07","question":"Como relato um problema de comportamento?","document":"conduta.md","section":"Relatos"}
+{"id":"rag-08","question":"Em que fuso estão os horários?","document":"horarios.md","section":"Data e fuso"}
+{"id":"rag-09","question":"Se eu chegar depois, posso entrar?","document":"horarios.md","section":"Pontualidade"}
+{"id":"rag-10","question":"Como confirmo minha participação?","document":"inscricao.md","section":"Participação"}
+{"id":"rag-11","question":"Preciso levar documento de identificação?","document":"inscricao.md","section":"Identificação"}
+{"id":"rag-12","question":"Como guardo lugar em uma palestra?","document":"reservas.md","section":"Como reservar"}
+{"id":"rag-13","question":"Quantas sessões posso reservar?","document":"reservas.md","section":"Limites"}
+{"id":"rag-14","question":"Quais são os assuntos das palestras?","document":"trilhas.md","section":"Temas"}
+{"id":"rag-15","question":"Como escolher conteúdo para meu nível?","document":"trilhas.md","section":"Níveis"}
+{"id":"rag-16","question":"Qual é a política de reembolso da passagem aérea?","document":null,"section":null}

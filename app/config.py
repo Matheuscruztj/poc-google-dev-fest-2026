@@ -26,7 +26,12 @@ class Settings:
     agent_model: str = "gemini-2.5-flash"
     agent_timeout_seconds: int = 12
     ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_embedding_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:3b"
+    ollama_context_length: int = 8192
+    rag_mode: str = "lexical"
+    rag_database_url: str | None = None
+    ollama_embedding_model: str = "nomic-embed-text:latest"
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -58,9 +63,27 @@ class Settings:
         if agent_mode == "live" and not api_key:
             raise ValueError("EVENTOPS_AGENT_MODE=live exige GOOGLE_API_KEY configurada.")
         ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+        ollama_embedding_base_url = os.getenv("OLLAMA_EMBEDDING_BASE_URL", ollama_base_url).rstrip(
+            "/"
+        )
         ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:3b").strip()
         if not ollama_model or len(ollama_model) > 128:
             raise ValueError("OLLAMA_MODEL deve conter de 1 a 128 caracteres.")
+        try:
+            ollama_context_length = int(os.getenv("OLLAMA_CONTEXT_LENGTH", "8192"))
+        except ValueError as exc:
+            raise ValueError("OLLAMA_CONTEXT_LENGTH deve ser inteiro.") from exc
+        if not 1024 <= ollama_context_length <= 32768:
+            raise ValueError("OLLAMA_CONTEXT_LENGTH deve estar entre 1024 e 32768.")
+        rag_mode = os.getenv("EVENTOPS_RAG_MODE", "lexical").strip().lower()
+        if rag_mode not in {"lexical", "hybrid"}:
+            raise ValueError("EVENTOPS_RAG_MODE aceita 'lexical' ou 'hybrid'.")
+        rag_database_url = os.getenv("EVENTOPS_RAG_DATABASE_URL") or None
+        embedding_model = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text:latest").strip()
+        if not embedding_model or len(embedding_model) > 128:
+            raise ValueError("OLLAMA_EMBEDDING_MODEL deve conter de 1 a 128 caracteres.")
+        if rag_mode == "hybrid" and not rag_database_url:
+            raise ValueError("EVENTOPS_RAG_MODE=hybrid exige EVENTOPS_RAG_DATABASE_URL.")
         host = os.getenv("EVENTOPS_HOST", "127.0.0.1").strip()
         if not host or any(char.isspace() for char in host):
             raise ValueError("EVENTOPS_HOST deve ser um hostname ou endereço válido.")
@@ -133,5 +156,10 @@ class Settings:
             agent_model=model,
             agent_timeout_seconds=agent_timeout,
             ollama_base_url=ollama_base_url,
+            ollama_embedding_base_url=ollama_embedding_base_url,
             ollama_model=ollama_model,
+            ollama_context_length=ollama_context_length,
+            rag_mode=rag_mode,
+            rag_database_url=rag_database_url,
+            ollama_embedding_model=embedding_model,
         )

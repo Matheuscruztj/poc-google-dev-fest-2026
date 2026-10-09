@@ -53,7 +53,7 @@ def main() -> int:
             "POSTGRES_DB=eventops",
             "-p",
             f"127.0.0.1:{port}:5432",
-            "postgres:17-alpine",
+            "pgvector/pgvector:pg17",
         ],
         cwd=ROOT,
         capture_output=True,
@@ -72,6 +72,15 @@ def main() -> int:
             raise RuntimeError("PostgreSQL temporário não ficou pronto.")
 
         records = load_session_seed()
+        with psycopg.connect(database_url) as connection:
+            connection.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            connection.execute("CREATE TEMP TABLE vector_smoke (embedding vector(3))")
+            connection.execute("INSERT INTO vector_smoke VALUES ('[1,0,0]'), ('[0,1,0]')")
+            nearest = connection.execute(
+                "SELECT embedding FROM vector_smoke "
+                "ORDER BY embedding <=> '[0.9,0.1,0]'::vector LIMIT 1"
+            ).fetchone()
+        assert nearest is not None and str(nearest[0]) == "[1,0,0]"
         records = [dict(item, capacity=1) if item["id"] == "S01" else item for item in records]
         startup_barrier = Barrier(2)
 
@@ -152,7 +161,8 @@ def main() -> int:
             ).fetchone()[0]
         assert count == 1, count
         print(
-            "PostgreSQL smoke: migrations, seed, chat persistence/leases, "
+            "PostgreSQL/pgvector smoke: vector extension/query, migrations, seed, "
+            "chat persistence/leases, "
             "idempotency and last-seat transaction passed."
         )
         return 0

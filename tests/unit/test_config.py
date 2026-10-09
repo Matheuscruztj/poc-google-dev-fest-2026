@@ -34,6 +34,8 @@ def test_defaults_are_offline_and_create_only_runtime_directory(
         ("EVENTOPS_AGENT_TIMEOUT_SECONDS", "0", "EVENTOPS_AGENT_TIMEOUT_SECONDS"),
         ("EVENTOPS_COOKIE_SECURE", "perhaps", "EVENTOPS_COOKIE_SECURE"),
         ("EVENTOPS_AGENT_MODEL", "bad model", "EVENTOPS_AGENT_MODEL"),
+        ("OLLAMA_CONTEXT_LENGTH", "512", "OLLAMA_CONTEXT_LENGTH"),
+        ("OLLAMA_CONTEXT_LENGTH", "not-number", "OLLAMA_CONTEXT_LENGTH"),
     ],
 )
 def test_invalid_configuration_fails_clearly(

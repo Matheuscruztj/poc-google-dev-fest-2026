@@ -21,7 +21,7 @@ from app.agents.coordinator import CoordinatorAgent
 from app.chat_sessions import ChatSessionError, ChatSessions
 from app.config import Settings
 from app.data_validation import load_session_seed, validate_faq_catalog
-from app.faq import search_faq
+from app.faq import configure_hybrid_index, search_faq
 from app.metrics import configure_file_logging
 from app.reservations import ReservationError, ReservationService, token_hash
 from app.resilience import CircuitBreaker
@@ -45,6 +45,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     trace_dir = Path("/tmp/eventops") if config.database_url else config.database.parent
     configure_file_logging(trace_dir / "agent-traces.jsonl")
     chat_sessions = ChatSessions(storage)
+    vector_index = None
+    if config.rag_mode == "hybrid":
+        from app.rag import OllamaEmbeddings, PgVectorFAQ
+
+        vector_index = PgVectorFAQ(
+            config.rag_database_url or "",
+            OllamaEmbeddings(config.ollama_embedding_base_url, config.ollama_embedding_model),
+        )
+        # Fail clearly at startup on unavailable/incompatible infrastructure; no silent stale index.
+        vector_index.initialize()
+        vector_index.sync()
+    configure_hybrid_index(vector_index)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> Any:
@@ -58,6 +70,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.mcp_breaker = mcp_breaker
     application.state.provider_breaker = provider_breaker
     application.state.chat_sessions = chat_sessions
+    application.state.rag_index = vector_index
 
     @application.middleware("http")
     async def request_id_middleware(request: Request, call_next: Any) -> Any:
@@ -213,6 +226,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 config.ollama_base_url,
                 config.ollama_model,
                 provider_breaker,
+                config.ollama_context_length,
             )
         )
         owner, history = chat_sessions.acquire(browser_session)

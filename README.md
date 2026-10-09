@@ -96,6 +96,8 @@ Para uma origem servida em outro host/porta, defina `EVENTOPS_ALLOWED_ORIGINS` c
 
 - **Agenda:** 20 sessões fictícias; filtros por trilha, nível e horário; até três escolhas sem conflito.
 - **FAQ:** busca lexical em oito documentos Markdown, com citações de arquivo e seção e abstenção quando não há evidência.
+- **RAG semântico opcional:** retrieval híbrido local com Ollama embeddings e PostgreSQL/pgvector; a busca lexical segue disponível como baseline e fallback. Veja [operação local](docs/operacao-local.md#rag-semântico-local-opcional).
+- **Case de benchmark do RAG local:** resultados comparativos, metodologia reproduzível, explicação de Recall@3/MRR e oportunidades de otimização em LLM, qualidade e FinOps em [case-benchmark-rag-local](docs/case-benchmark-rag-local.md).
 - **Reserva simulada:** identidade de demonstração por cookie HttpOnly, prévia separada da confirmação, validade de cinco minutos, checagem de capacidade e idempotência no SQLite.
 - **Agente único:** conversa via `/api/chat`, com tools de leitura para agenda e FAQ, fontes validadas e proposta de reserva que sempre exige preview e confirmação pela interface.
 - **Sessões e histórico:** identidade e últimos quatro turnos persistidos no banco; recuperação após reinício, expiração em 24 h e bloqueio de chamadas simultâneas por conversa. API e MCP consultam o mesmo catálogo persistido.

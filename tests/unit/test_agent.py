@@ -10,6 +10,7 @@ from app.agent import (
     TransientProviderError,
     build_adk_agent,
     make_agent,
+    ollama_response_schema,
 )
 from app.evaluators import evaluate_case, load_cases
 from app.metrics import Trace, redact
@@ -257,6 +258,21 @@ def test_local_mode_selects_ollama_provider(catalog):
     assert isinstance(agent.provider, OllamaProvider)
     assert agent.provider.base_url == "http://ollama:11434"
     assert agent.model == "qwen2.5:3b"
+
+
+def test_ollama_response_schema_limits_ids_and_citations_to_context(catalog):
+    schema = ollama_response_schema(
+        DemoTools(catalog), [{"document": "reservas.md", "section": "Limites"}]
+    )
+    properties = schema["properties"]
+    assert properties["session_ids"]["items"]["enum"] == sorted(session.id for session in catalog)
+    assert properties["sources"]["items"]["properties"]["document"]["enum"] == ["reservas.md"]
+    assert properties["sources"]["items"]["properties"]["section"]["enum"] == ["Limites"]
+    assert properties["reservation_proposal"]["enum"] == [
+        *(sorted(session.id for session in catalog)),
+        None,
+    ]
+    assert schema["additionalProperties"] is False
 
 
 @pytest.mark.anyio

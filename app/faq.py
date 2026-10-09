@@ -11,6 +11,19 @@ from importlib.resources import files
 
 from app.data_validation import FAQ_DOCUMENTS
 
+_HYBRID_INDEX: object | None = None
+
+
+def configure_hybrid_index(index: object | None) -> None:
+    """Enable optional semantic retrieval while preserving lexical-only defaults."""
+    global _HYBRID_INDEX
+    _HYBRID_INDEX = index
+
+
+def hybrid_enabled() -> bool:
+    return _HYBRID_INDEX is not None
+
+
 STOPWORDS = {
     "a",
     "as",
@@ -164,6 +177,17 @@ def load_chunks() -> list[Chunk]:
 def search_faq(
     question: str, chunks: list[Chunk] | None = None, limit: int = 3
 ) -> dict[str, object]:
+    if _HYBRID_INDEX is not None and chunks is None:
+        from app.rag import search_hybrid
+
+        return search_hybrid(question, _HYBRID_INDEX, limit)  # type: ignore[arg-type]
+    return search_faq_lexical(question, chunks, limit)
+
+
+def search_faq_lexical(
+    question: str, chunks: list[Chunk] | None = None, limit: int = 3
+) -> dict[str, object]:
+    """Lexical-only baseline used by the hybrid retriever and offline mode."""
     query = _tokens(question)
     if not query:
         return {

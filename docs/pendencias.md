@@ -36,6 +36,26 @@ sessão, sem job periódico. Persistência local não aprova G6 cloud.
 | F08 | Média | Concluído local | Metadados estruturados de versão, atualização, validade, status, conflito e confiança são validados e chegam às citações. Retrieval exclui regras futuras, expiradas, conflitantes e não confiáveis; fixture contaminada isolada exige abstenção. | `app/data/faq_metadata.json`, `app/data_validation.py`, `app/faq.py`, `evals/harness.py`, `tests/fixtures/adversarial/faq_poisoned_chunk.json`. A fixture não entra no catálogo publicado. |
 | F09 | Média | Concluído local | `make release-check` executa gates offline, build e Compose; compara hash do candidato em eval/build/imagem, dataset/catálogo, wheel/sdist e digest Docker, falhando com evidência ausente ou divergente. | `scripts/candidate.py`, `scripts/release_check.py`, `scripts/check_build.py`, `scripts/check_compose.py`, `Makefile`. Gate live continua separado e exige execução autorizada. |
 
+## Próxima implementação — RAG semântico com pgvector
+
+Direção: usar PostgreSQL com a extensão `pgvector` como armazenamento vetorial,
+tanto no Compose local quanto futuramente no Cloud SQL for PostgreSQL acessado
+pelo Cloud Run. Embeddings são independentes do banco: selecionar e fixar um
+modelo/provider compatível com português, dimensão e política de dados antes de
+indexar; usar o mesmo para documentos e consultas. O retrieval lexical atual
+deve continuar disponível como baseline/fallback enquanto o semântico é avaliado.
+
+| ID | Prioridade | Estado | Pendência | Critério de conclusão |
+|---|---|---|---|---|
+| R01 | Alta | Implementado local | Contrato Ollama `nomic-embed-text:latest`, 768 dimensões, versão de índice, timeout, limite por texto e cache local; modelo configurável. | `app/rag.py`, `EVENTOPS_RAG_MODE`, `OLLAMA_EMBEDDING_MODEL`. Dimensão/provider/modelo divergentes são recusados. |
+| R02 | Alta | Implementado local | Serviço PostgreSQL 17/pgvector, volume persistente, healthcheck e criação idempotente da extensão/schema. | Perfil `rag` em `compose.yaml`; smoke vetorial em `scripts/check_postgres.py`. |
+| R03 | Alta | Implementado local | Sincronização transacional de chunks e metadados, hash de conteúdo, atualização e remoção idempotentes. | `PgVectorFAQ.sync`; embedding é calculado só para chunk alterado. |
+| R04 | Alta | Implementado local | Busca semântica com filtros de segurança e fusão por reciprocal rank fusion (RRF) com a busca lexical; fallback lexical em erro vetorial durante consulta. | `PgVectorFAQ.search`, `search_hybrid`; limite padrão de três e threshold inicial configurado. |
+| R05 | Alta | Concluído local | Dataset versionado medido em lexical e híbrido: recall@3 0,600 → 0,667, MRR 0,567 → 0,622 e abstenção 0/1 → 1/1. A amostra tem 15 perguntas com fonte e uma pergunta fora do catálogo; manter calibração em novas perguntas antes de trocar o padrão. | `evals/rag_cases.jsonl`, `scripts/eval_rag.py`; limiares iniciais: vetor 0,65 e lexical 0,34. |
+| R06 | Alta | Concluído local | Seis casos híbridos cobrem injeção, metadados futuros/expirados/conflitantes/não confiáveis, duplicatas e dado fora de escopo: 0 fontes bloqueadas citadas, recall 1,0 nas fontes esperadas e 0 falhas de abstenção. | `evals/rag_security_cases.jsonl`, resultado local `reports/rag-local-20261009/rag-hybrid.json`. |
+| R07 | Média | Parcial local | Perfil local e smoke de pgvector implementados. Compatibilidade Cloud Run/Cloud SQL, IAM, pool e migrations operacionais ainda precisam de revisão/documentação cloud. | Validar suporte de extensão e conexão gerenciada antes do deploy, sem provisionar recursos. |
+| R08 | Média | Parcial local | `eval-rag` e o benchmark de chat publicam chamadas/tokens/duração de embedding, cache, consulta vetorial e fallback; compute/energia local ainda não tem estimativa financeira. | `scripts/eval_rag.py`, `scripts/benchmark_rag_chat.py`; custo de API local é zero. |
+
 ## Validações e materiais restantes
 
 - Baseline single e comparação live exigem chave/quota e revisão. Resolver
