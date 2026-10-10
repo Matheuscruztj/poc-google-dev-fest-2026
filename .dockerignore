@@ -14,9 +14,11 @@ build
 *.egg-info
 reports
 var
-.env
+.env*
+!.env.example
 *.sqlite3
 test-results
 playwright-report
 tests
 evals
+scripts

@@ -33,42 +33,42 @@ typecheck:
 test:
 	$(PYTHON) -m pytest -m 'not e2e' --cov=app.schedule --cov=app.faq --cov=app.reservations --cov=app.storage --cov-branch --cov-report=term-missing --cov-report=xml
 	$(PYTHON) -m coverage json -o coverage.json
-	$(PYTHON) scripts/check_branch_coverage.py coverage.json
+	$(PYTHON) scripts/checks/check_branch_coverage.py coverage.json
 
 e2e:
 	$(PYTHON) -m pytest -m e2e --junitxml=test-results/e2e.xml
 
 build:
-	$(PYTHON) scripts/check_build.py
+	$(PYTHON) scripts/checks/check_build.py
 
 compose-check:
-	$(PYTHON) scripts/check_compose.py
+	$(PYTHON) scripts/checks/check_compose.py
 
 postgres-check:
-	$(PYTHON) scripts/check_postgres.py
+	$(PYTHON) scripts/checks/check_postgres.py
 
 # Laboratório local descartável; não acessa Google Cloud nem exige API key.
 
 eval-offline:
-	$(PYTHON) scripts/run_evals.py --mode offline --rounds 1
+	$(PYTHON) scripts/evals/run_evals.py --mode offline --rounds 1
 
 eval-live:
-	$(PYTHON) scripts/run_evals.py --mode live --rounds 3 --max-requests 123 $(if $(LIVE_CONFIRM),--confirm-live)
+	$(PYTHON) scripts/evals/run_evals.py --mode live --rounds 3 --max-requests 123 $(if $(LIVE_CONFIRM),--confirm-live)
 
 eval-compare:
-	$(PYTHON) scripts/run_comparison.py --rounds 3
+	$(PYTHON) scripts/evals/run_comparison.py --rounds 3
 
 eval-rag:
-	$(PYTHON) scripts/eval_rag.py --mode "$${RAG_EVAL_MODE:-lexical}"
+	$(PYTHON) scripts/evals/eval_rag.py --mode "$${RAG_EVAL_MODE:-lexical}"
 
 report-metrics:
 	@test -n "$(REPORT)" || (echo 'Use make report-metrics REPORT=reports/run/comparison.json' && exit 2)
-	$(PYTHON) scripts/report_metrics.py "$(REPORT)"
+	$(PYTHON) scripts/evals/report_metrics.py "$(REPORT)"
 
 check: lint typecheck test e2e eval-offline
 
 pre-push: check build compose-check
 
 release-check: check build compose-check
-	$(PYTHON) scripts/release_check.py
+	$(PYTHON) scripts/checks/release_check.py
 

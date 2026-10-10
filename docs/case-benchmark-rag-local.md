@@ -81,11 +81,11 @@ Defina o modo local e os endpoints conforme seu ambiente:
 docker compose --profile rag up -d pgvector ollama
 docker compose --profile rag run --rm rag-init
 OLLAMA_BASE_URL=http://127.0.0.1:11434 \
-  .venv/bin/python scripts/benchmark_rag_chat.py --mode plain --repeat 3
+  .venv/bin/python scripts/evals/benchmark_rag_chat.py --mode plain --repeat 3
 EVENTOPS_RAG_DATABASE_URL=postgresql://eventops:eventops-local-only@127.0.0.1:55432/eventops \
 OLLAMA_BASE_URL=http://127.0.0.1:11434 \
 OLLAMA_EMBEDDING_BASE_URL=http://127.0.0.1:11435 \
-  .venv/bin/python scripts/benchmark_rag_chat.py --mode hybrid --repeat 3
+  .venv/bin/python scripts/evals/benchmark_rag_chat.py --mode hybrid --repeat 3
 make eval-rag
 RAG_EVAL_MODE=hybrid make eval-rag
 ```

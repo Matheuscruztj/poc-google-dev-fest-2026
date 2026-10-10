@@ -9,7 +9,7 @@ passou: 129 testes sem navegador, três E2E, 40/40 evals, lint/tipos, build e
 smoke Compose incluindo histórico após reinício. PostgreSQL local e comparação
 offline de três rodadas também passaram; evidências em `pendencias.md`.
 
-**Evidência histórica anterior (2026-10-09):** Na revisão anterior, Ruff, formatação, mypy, `make test` (115 testes), `make eval-offline` (40/40) e `make eval-compare` (40/40 em cada arquitetura nas três rodadas) passaram. Comparativo daquela revisão: `reports/20261009T040950Z-53dd5e96/`. Naquele momento, a execução completa de `make pre-push` ainda precisava ser repetida; ainda faltam live Gemini, retry/breaker de providers, job de migrations com credencial separada, Cloud SQL real e CI remoto. A validação PostgreSQL local descartável anterior passou. Veja [plano de implementação](plano-de-implementacao.md).
+**Evidência histórica anterior (2026-10-09):** Na revisão anterior, Ruff, formatação, mypy, `make test` (115 testes), `make eval-offline` (40/40) e `make eval-compare` (40/40 em cada arquitetura nas três rodadas) passaram. Comparativo daquela revisão: `reports/20261009T040950Z-53dd5e96/`. Naquele momento, a execução completa de `make pre-push` ainda precisava ser repetida; ainda faltam live Gemini, retry/breaker de providers, job de migrations com credencial separada, Cloud SQL real e CI remoto. A validação PostgreSQL local descartável anterior passou. Para limitações funcionais atuais, consulte [pendências](pendencias.md).
 
 Gate é um conjunto de critérios que precisa passar para concluir a wave. Os gates acumulam: W2 exige os gates anteriores e os novos. Relatórios mostram `passed`, `failed`, `not_run` ou `not_applicable` com justificativa; somente os gates exigidos e aprovados autorizam concluir a wave.
 
@@ -48,7 +48,7 @@ O Makefile é a interface local. Alguns alvos previstos abaixo entram apenas nas
 | `make pre-push` | `make check`, build instalável e smoke Compose offline; executado pelo hook pre-push e no GitHub |
 | Husky (`.husky/pre-push`) | Executa `make pre-push` antes de enviar commits |
 | `make compose-check` | Build/smoke Compose, health, catálogo e chat MCP, receipt após reinício, volume temporário |
-| `make release-check` | Gates offline completos e conferência de hash entre código, dataset, wheel e imagem; `scripts/release_check.py --live reports/run/evals.json` valida evidência live autorizada do mesmo candidato quando disponível |
+| `make release-check` | Gates offline completos e conferência de hash entre código, dataset, wheel e imagem; `scripts/checks/release_check.py --live reports/run/evals.json` valida evidência live autorizada do mesmo candidato quando disponível |
 
 Base dos comandos Python: `ruff check app mcp_server tests scripts`, `ruff format --check app mcp_server tests scripts`, `mypy app mcp_server scripts`, `pytest` e `python -m build`. `make build` também instala e testa o wheel fora do checkout.
 
@@ -82,7 +82,7 @@ As ferramentas escolhidas seguem os comandos documentados pelo [Ruff](https://do
 
 Os avaliadores não devem chamar o próprio seletor de agenda para descobrir a resposta correta. Usar expectativas fixas e validação direta dos fatos. Testes devem observar HTTP, banco e resultados, evitando apenas espelhar detalhes internos da implementação.
 
-Cobertura mínima de **80% de branches em cada módulo** de domínio (`schedule`, `faq`, `reservations`, `storage`) é aplicada por `scripts/check_branch_coverage.py` dentro de `make check`; JUnit/coverage XML e JSON são exportados. Cobertura não substitui cenários: o gate falha se qualquer caso crítico falhar, mesmo com 100% de cobertura.
+Cobertura mínima de **80% de branches em cada módulo** de domínio (`schedule`, `faq`, `reservations`, `storage`) é aplicada por `scripts/checks/check_branch_coverage.py` dentro de `make check`; JUnit/coverage XML e JSON são exportados. Cobertura não substitui cenários: o gate falha se qualquer caso crítico falhar, mesmo com 100% de cobertura.
 
 Registrar JUnit XML, cobertura e resumo dos cenários. Um teste crítico pulado ou marcado como falha esperada impede aprovação do gate.
 

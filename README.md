@@ -80,11 +80,11 @@ Em macOS/Windows, instale o navegador com `python -m playwright install chromium
   ```
 - `live`: usa Gemini via Google ADK. A imagem Docker Compose atual não inclui esse extra opcional; use o ambiente Python instalado por `make setup`, carregue `EVENTOPS_AGENT_MODE=live` e `GOOGLE_API_KEY` no shell e rode `make run`. Chamadas live usam serviço externo e podem consumir quota; não coloque a chave no Git.
 
-O seletor da interface permite escolher Agente único ou Coordenador + especialistas no modo offline. O provider live da arquitetura multi ainda não está configurado. Para instruções de reset, banco, diagnóstico e avaliação, consulte [operação local](docs/operacao-local.md). Dependências Python são fixadas nos locks SHA-256 em `requirements/`.
+O seletor da interface permite escolher Agente único ou Coordenador + especialistas. Em modo `live`, Gemini responde no single e faz o roteamento do coordenador multi; em `local`, Ollama faz os dois papéis. Os especialistas usam ferramentas locais verificadas nos dois modos. Para instruções de reset, banco, diagnóstico e avaliação, consulte [operação local](docs/operacao-local.md). Dependências Python são fixadas nos locks SHA-256 em `requirements/`.
 
 ### Reset local seguro
 
-Pare o servidor e execute `python scripts/reset_demo.py`. O script só remove o SQLite local indicado por `EVENTOPS_DATABASE` (ou `var/eventops.sqlite3` por padrão), diretamente dentro de `var/`; também apaga seus arquivos WAL/SHM. Ele recusa modo diferente de `offline`, links simbólicos e caminhos fora desse diretório. Não use `rm` para apontar o reset a outros dados.
+Pare o servidor e execute `python scripts/local/reset_demo.py`. O script só remove o SQLite local indicado por `EVENTOPS_DATABASE` (ou `var/eventops.sqlite3` por padrão), diretamente dentro de `var/`; também apaga seus arquivos WAL/SHM. Ele recusa modo diferente de `offline`, links simbólicos e caminhos fora desse diretório. Não use `rm` para apontar o reset a outros dados.
 
 ### Erros e identidade da API
 
@@ -104,6 +104,8 @@ Para uma origem servida em outro host/porta, defina `EVENTOPS_ALLOWED_ORIGINS` c
 - **API:** `GET /health`, `GET /api/sessions`, `POST /api/schedule`, `POST /api/faq`, `POST /api/chat`, `POST /api/reservations/preview` e `POST /api/reservations`.
 
 Não há login real, reserva real, pagamentos nem calendário de terceiros. Agenda e FAQ são determinísticos; o chat identifica os modos offline, Ollama local e Gemini live.
+
+Para publicar, validar e encerrar a API temporária no Cloud Run, use o [runbook Cloud](docs/operacao-cloud.md), que reúne deploy, smoke, arquitetura validada, custos e teardown. A infraestrutura EventOps foi removida após a validação de 10/10/2026; o projeto e o alerta de orçamento foram mantidos.
 
 ## Verificações
 
@@ -135,10 +137,12 @@ make eval-live LIVE_CONFIRM=1
 
 Essa execução usa Gemini e pode consumir quota. A avaliação da arquitetura multi live ainda não está habilitada.
 
-## Plano completo
+## Documentação
 
-O escopo e a arquitetura das próximas waves estão descritos em [visão completa](docs/visao-completa.md), com tasks e critérios de aceite no [plano de implementação](docs/plano-de-implementacao.md). Os gates estão em [quality-gates](docs/quality-gates.md). A revisão funcional e os critérios para concluir cada pendência estão em [pendências](docs/pendencias.md).
+- [Operação local](docs/operacao-local.md): configuração, reset seguro, RAG local e PostgreSQL.
+- [Quality gates](docs/quality-gates.md): comandos e critérios de validação.
+- [Pendências funcionais](docs/pendencias.md): limitações conhecidas e itens sem comprovação.
+- [Benchmark de RAG](docs/case-benchmark-rag-local.md): método e resultados do experimento local.
+- [Runbook Cloud](docs/operacao-cloud.md): estado atual, recriação, validação, custos e encerramento da infraestrutura temporária.
 
-**Implementado neste estágio:** base, MVP offline com catálogo SQLite, Docker Compose local, agente único, arquitetura multi offline com MCP stdio e políticas locais de deadline/retry/circuit breaker (W0–W5.6 offline). O adapter PostgreSQL passou em smoke local descartável para migração, API, idempotência e disputa da última vaga; ainda não há Cloud SQL provisionado nem G6 aprovado. Single segue como padrão. W3.7 e a comparação live aguardam chave/quota Google e revisão humana; multi live ainda não foi configurado e retorna erro explícito. Release e Cloud Run permanecem pendentes. Veja o [plano de implementação](docs/plano-de-implementacao.md).
-
-Para repetir a validação do adapter, execute `make postgres-check` (requer Docker; usa um container PostgreSQL descartável, sem Google Cloud ou API key). Para apontar a aplicação a um PostgreSQL já existente, configure `EVENTOPS_DATABASE_URL` fora do repositório. O startup aplica migrations empacotadas; para produção, separar essa etapa em job com credencial DDL é pendência. Veja o [runbook cloud candidato](docs/operacao-cloud.md).
+Para repetir a validação do adapter PostgreSQL, execute `make postgres-check` (requer Docker; usa um container descartável, sem Google Cloud ou API key). Para apontar a aplicação a um PostgreSQL existente, configure `EVENTOPS_DATABASE_URL` fora do repositório. O startup aplica migrations empacotadas; para produção, separar essa etapa em job com credencial DDL segue pendente.

@@ -11,9 +11,9 @@ import time
 import urllib.request
 from pathlib import Path
 
-from candidate import candidate_digest
+from scripts.checks.candidate import candidate_digest
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def free_port() -> int:

@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from candidate import ROOT, candidate_digest
+from scripts.checks.candidate import ROOT, candidate_digest
 
 
 def read_report(path: Path) -> dict[str, Any]:

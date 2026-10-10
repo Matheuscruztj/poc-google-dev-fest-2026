@@ -10,7 +10,7 @@ import statistics
 from pathlib import Path
 from typing import Any, cast
 
-from candidate import ROOT
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def price_table() -> dict[str, Any]:

@@ -8,9 +8,9 @@ python -m playwright install --with-deps chromium
 make check
 ```
 
-Compose publica `127.0.0.1:8000` e mantém SQLite no volume `eventops-data`. `EVENTOPS_PORT` altera a porta publicada. Para modelo local, use o perfil `local-model` em CPU. Com NVIDIA Container Toolkit/CUDA, use `docker compose -f compose.yaml -f compose.gpu.yaml --profile gpu up -d` e baixe pesos com `docker compose -f compose.yaml -f compose.gpu.yaml --profile gpu run --rm model-init`. Para Gemini via API, selecione `EVENTOPS_AGENT_MODE=live` e forneça `GOOGLE_API_KEY`; offline permanece o padrão.
+Compose publica `127.0.0.1:8000` e mantém SQLite no volume `eventops-data`. `EVENTOPS_PORT` altera a porta publicada. Para modelo local, use o perfil `local-model` em CPU. Com NVIDIA Container Toolkit/CUDA, use `docker compose -f compose.yaml -f compose.gpu.yaml --profile gpu up -d` e baixe pesos com `docker compose -f compose.yaml -f compose.gpu.yaml --profile gpu run --rm model-init`. Para Gemini via API, selecione `EVENTOPS_AGENT_MODE=live` e forneça `GOOGLE_API_KEY`; offline permanece o padrão. Também é possível usar Vertex AI com ADC definindo `GOOGLE_GENAI_USE_VERTEXAI=true`, `GOOGLE_CLOUD_PROJECT` e `GOOGLE_CLOUD_LOCATION`. Single chama Gemini para responder. Multi usa Gemini para escolher os especialistas, que continuam executando ferramentas locais verificadas. Com `EVENTOPS_AGENT_MODE=local`, Ollama faz o roteamento multi e responde no single.
 
-Para apagar os dados do Compose, rode `docker compose down -v`; isso remove o banco e o cache de pesos Ollama. Para preservar pesos, remova somente o volume de dados SQLite. No modo Python direto, pare o servidor e rode `python scripts/reset_demo.py`, que só aceita SQLite dentro de `var/` e modo offline.
+Para apagar os dados do Compose, rode `docker compose down -v`; isso remove o banco e o cache de pesos Ollama. Para preservar pesos, remova somente o volume de dados SQLite. No modo Python direto, pare o servidor e rode `python scripts/local/reset_demo.py`, que só aceita SQLite dentro de `var/` e modo offline.
 
 ## RAG semântico local (opcional)
 
@@ -60,11 +60,11 @@ Para medir o consumo do mesmo Ollama no chat normal (FAQ inteiro no prompt) e no
 chat híbrido (somente trechos recuperados), use três perguntas por rodada:
 
 ```bash
-OLLAMA_BASE_URL=http://127.0.0.1:11434 .venv/bin/python scripts/benchmark_rag_chat.py --mode plain --repeat 3
+OLLAMA_BASE_URL=http://127.0.0.1:11434 .venv/bin/python scripts/evals/benchmark_rag_chat.py --mode plain --repeat 3
 EVENTOPS_RAG_DATABASE_URL=postgresql://eventops:eventops-local-only@127.0.0.1:55432/eventops \
 OLLAMA_BASE_URL=http://127.0.0.1:11434 \
 OLLAMA_EMBEDDING_BASE_URL=http://127.0.0.1:11435 \
-.venv/bin/python scripts/benchmark_rag_chat.py --mode hybrid --repeat 3
+.venv/bin/python scripts/evals/benchmark_rag_chat.py --mode hybrid --repeat 3
 ```
 
 O benchmark cria banco SQLite temporário separado por modo e informa tokens de

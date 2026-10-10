@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from candidate import candidate_digest  # noqa: E402
+from scripts.checks.candidate import candidate_digest  # noqa: E402
 
 from app.agent import PROMPT_VERSION, make_agent  # noqa: E402
 from app.evaluators import evaluate_case, execute_case_state, load_cases, run_case  # noqa: E402

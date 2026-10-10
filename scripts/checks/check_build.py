@@ -16,7 +16,7 @@ import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from candidate import candidate_digest
+from scripts.checks.candidate import candidate_digest
 
 
 def free_port() -> int:

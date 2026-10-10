@@ -13,10 +13,10 @@ from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import uuid4
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from candidate import candidate_digest  # noqa: E402
+from scripts.checks.candidate import candidate_digest  # noqa: E402
 
 from app.agent import PROMPT_VERSION, make_agent  # noqa: E402
 from app.agents.coordinator import COORDINATOR_PROMPT_VERSION, CoordinatorAgent  # noqa: E402

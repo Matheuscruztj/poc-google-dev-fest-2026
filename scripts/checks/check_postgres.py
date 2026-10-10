@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Barrier
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 import psycopg  # noqa: E402
@@ -115,6 +115,8 @@ def main() -> int:
         assert history == ["pergunta", "resposta"]
         independent_chat.release("pg-chat-session", owner)
         service = ReservationService(storage)
+        # Session and reservation writes remain visible across independent
+        # application instances sharing the PostgreSQL database.
         settings = Settings(database_url=database_url, seed_catalog=False)
         with TestClient(create_app(settings), headers={"origin": "http://testserver"}) as client:
             assert len(client.get("/api/sessions").json()["sessions"]) == 20
@@ -127,6 +129,13 @@ def main() -> int:
             receipt = client.post("/api/reservations", json=payload).json()
             replay = client.post("/api/reservations", json=payload).json()
             assert replay["receipt_id"] == receipt["receipt_id"] and replay["replayed"] is True
+            assert client.get("/api/sessions").status_code == 200
+        with repeat_storage.connection() as connection:
+            persisted_receipt = connection.execute(
+                "SELECT receipt_id FROM reservations WHERE user_id=? AND session_id=?",
+                ("participante-demo", "S02"),
+            ).fetchone()
+        assert persisted_receipt is not None
 
         previews = [service.preview("S01", f"race-user-{index}") for index in range(2)]
         barrier = Barrier(2)
