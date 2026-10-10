@@ -30,7 +30,7 @@ class ChatSessions:
     def _transaction(self) -> Iterator[Any]:
         try:
             with self.storage.connection() as connection:
-                connection.execute("BEGIN IMMEDIATE")
+                self.storage.begin_write(connection)
                 try:
                     yield connection
                     connection.commit()
@@ -38,6 +38,8 @@ class ChatSessions:
                     connection.rollback()
                     raise
         except sqlite3.OperationalError as exc:
+            if not self.storage.is_busy_error(exc):
+                raise
             raise ChatSessionError(
                 503, "storage_busy", "O armazenamento está ocupado; tente novamente."
             ) from exc

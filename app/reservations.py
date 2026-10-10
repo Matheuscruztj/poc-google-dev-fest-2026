@@ -55,7 +55,7 @@ class ReservationService:
         fingerprint = hashlib.sha256(f"{user_id}\0{session_id}".encode()).hexdigest()
         try:
             with self.storage.connection() as connection:
-                connection.execute("BEGIN IMMEDIATE")
+                self.storage.begin_write(connection)
                 previous = connection.execute(
                     "SELECT fingerprint, receipt_id FROM idempotency WHERE user_id=? AND key=?",
                     (user_id, idempotency_key),

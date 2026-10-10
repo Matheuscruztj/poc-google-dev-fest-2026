@@ -23,6 +23,9 @@ class Settings:
     allowed_origins: tuple[str, ...] = ()
     agent_mode: str = "offline"
     google_api_key: str | None = None
+    google_vertex_ai: bool = False
+    google_cloud_project: str | None = None
+    google_cloud_location: str = "us-central1"
     agent_model: str = "gemini-2.5-flash"
     agent_timeout_seconds: int = 12
     ollama_base_url: str = "http://127.0.0.1:11434"
@@ -31,6 +34,8 @@ class Settings:
     ollama_context_length: int = 8192
     rag_mode: str = "lexical"
     rag_database_url: str | None = None
+    embedding_provider: str = "ollama"
+    embedding_model: str = "nomic-embed-text:latest"
     ollama_embedding_model: str = "nomic-embed-text:latest"
 
     @classmethod
@@ -60,8 +65,14 @@ class Settings:
         if not 1 <= agent_timeout <= 60:
             raise ValueError("EVENTOPS_AGENT_TIMEOUT_SECONDS deve estar entre 1 e 60.")
         api_key = os.getenv("GOOGLE_API_KEY")
-        if agent_mode == "live" and not api_key:
-            raise ValueError("EVENTOPS_AGENT_MODE=live exige GOOGLE_API_KEY configurada.")
+        vertex_text = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "false").strip().lower()
+        if vertex_text not in {"1", "true", "yes", "0", "false", "no"}:
+            raise ValueError("GOOGLE_GENAI_USE_VERTEXAI deve ser booleano.")
+        google_vertex_ai = vertex_text in {"1", "true", "yes"}
+        google_cloud_project = os.getenv("GOOGLE_CLOUD_PROJECT") or None
+        google_cloud_location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1").strip()
+        if agent_mode == "live" and not api_key and not google_vertex_ai:
+            raise ValueError("EVENTOPS_AGENT_MODE=live exige GOOGLE_API_KEY ou Vertex AI com ADC.")
         ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
         ollama_embedding_base_url = os.getenv("OLLAMA_EMBEDDING_BASE_URL", ollama_base_url).rstrip(
             "/"
@@ -79,9 +90,24 @@ class Settings:
         if rag_mode not in {"lexical", "hybrid"}:
             raise ValueError("EVENTOPS_RAG_MODE aceita 'lexical' ou 'hybrid'.")
         rag_database_url = os.getenv("EVENTOPS_RAG_DATABASE_URL") or None
-        embedding_model = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text:latest").strip()
+        if rag_database_url and not rag_database_url.startswith(("postgresql://", "postgres://")):
+            raise ValueError("EVENTOPS_RAG_DATABASE_URL precisa usar PostgreSQL.")
+        embedding_provider = os.getenv("EVENTOPS_EMBEDDING_PROVIDER", "ollama").strip().lower()
+        if embedding_provider not in {"ollama", "google"}:
+            raise ValueError("EVENTOPS_EMBEDDING_PROVIDER aceita 'ollama' ou 'google'.")
+        default_embedding_model = (
+            "gemini-embedding-001" if embedding_provider == "google" else "nomic-embed-text:latest"
+        )
+        embedding_model_value = (
+            os.getenv("EVENTOPS_EMBEDDING_MODEL")
+            or os.getenv("OLLAMA_EMBEDDING_MODEL")
+            or default_embedding_model
+        )
+        embedding_model = embedding_model_value.strip()
         if not embedding_model or len(embedding_model) > 128:
             raise ValueError("OLLAMA_EMBEDDING_MODEL deve conter de 1 a 128 caracteres.")
+        if embedding_provider == "google" and not api_key:
+            raise ValueError("Embeddings Google exigem GOOGLE_API_KEY configurada.")
         if rag_mode == "hybrid" and not rag_database_url:
             raise ValueError("EVENTOPS_RAG_MODE=hybrid exige EVENTOPS_RAG_DATABASE_URL.")
         host = os.getenv("EVENTOPS_HOST", "127.0.0.1").strip()
@@ -153,6 +179,9 @@ class Settings:
             allowed_origins=allowed_origins,
             agent_mode=agent_mode,
             google_api_key=api_key,
+            google_vertex_ai=google_vertex_ai,
+            google_cloud_project=google_cloud_project,
+            google_cloud_location=google_cloud_location,
             agent_model=model,
             agent_timeout_seconds=agent_timeout,
             ollama_base_url=ollama_base_url,
@@ -161,5 +190,7 @@ class Settings:
             ollama_context_length=ollama_context_length,
             rag_mode=rag_mode,
             rag_database_url=rag_database_url,
+            embedding_provider=embedding_provider,
+            embedding_model=embedding_model,
             ollama_embedding_model=embedding_model,
         )

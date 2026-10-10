@@ -34,11 +34,23 @@ async def test_multi_coordinator_routes_faq_with_verified_source(sessions):
 @pytest.mark.anyio
 @pytest.mark.parametrize("provider", ["live", "local"])
 @pytest.mark.anyio
-async def test_multi_coordinator_rejects_unconfigured_providers(sessions, provider):
-    result = await CoordinatorAgent(sessions, mode=provider).ask("Palestras de IA")
-    assert result.error == f"multi_{provider}_unavailable"
-    assert result.trace["fallback"] is True
-    assert result.trace["tools"] == []
+async def test_multi_coordinator_uses_configured_model_router(sessions, provider, monkeypatch):
+    async def route(message):
+        assert "Palestras" in message
+        return True, False
+
+    agent = CoordinatorAgent(
+        sessions,
+        mode=provider,
+        api_key="test-key",
+        use_mcp=False,
+    )
+    monkeypatch.setattr(agent, "_route_with_model", route)
+    result = await agent.ask("Palestras de IA")
+    assert result.error is None
+    assert result.mode == f"{provider}:multi"
+    assert result.trace["status"] == "ok"
+    assert "delegate:schedule_agent" in result.trace["tools"]
 
 
 @pytest.mark.anyio

@@ -206,7 +206,7 @@ def test_chat_history_survives_application_restart(client, monkeypatch):
             histories.append(history)
             return AgentResult("Resposta seguinte", [], [], None, "offline", {})
 
-    monkeypatch.setattr("app.main.make_agent", lambda *args: RecordingAgent())
+    monkeypatch.setattr("app.main.make_agent", lambda *args, **kwargs: RecordingAgent())
     restarted = create_app(Settings(database=client.app.state.settings.database))
     with client.__class__(restarted, headers={"origin": "http://testserver"}) as other:
         other.cookies.set("eventops_demo", cookie)
@@ -234,7 +234,7 @@ def test_unexpected_agent_error_releases_chat_lease(client, monkeypatch):
         async def ask(self, message, history):
             raise RuntimeError("controlled failure")
 
-    monkeypatch.setattr("app.main.make_agent", lambda *args: BrokenAgent())
+    monkeypatch.setattr("app.main.make_agent", lambda *args, **kwargs: BrokenAgent())
     with client.__class__(
         client.app, headers={"origin": "http://testserver"}, raise_server_exceptions=False
     ) as browser:
@@ -249,7 +249,7 @@ async def test_cancelled_chat_releases_lease(client, monkeypatch):
         async def ask(self, message, history):
             raise asyncio.CancelledError
 
-    monkeypatch.setattr("app.main.make_agent", lambda *args: CancelledAgent())
+    monkeypatch.setattr("app.main.make_agent", lambda *args, **kwargs: CancelledAgent())
     request = Request(
         {
             "type": "http",

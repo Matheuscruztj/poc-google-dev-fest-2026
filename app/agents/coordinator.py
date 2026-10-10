@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import time
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.request import Request, urlopen
 
 from app.agent import AgentResult, ProviderError
 from app.mcp_client import MCPClientError, ScheduleMCPClient
@@ -89,7 +91,9 @@ class ScheduleAgent:
         if self.mcp is None:
             budget.record_tool("schedule.list_sessions")
             tools = DemoTools(self.sessions)
-            data = tools.list_sessions(**schedule_query(message, self.sessions))
+            query = schedule_query(message, self.sessions)
+            query.pop("limit", None)
+            data = tools.list_sessions(**query)
         else:
             budget.record_tool("mcp.list_sessions")
             data = await self.mcp.call_tool("list_sessions", schedule_query(message, self.sessions))
@@ -126,6 +130,11 @@ class CoordinatorAgent:
         use_mcp: bool = True,
         circuit_breaker: CircuitBreaker | None = None,
         database: Path | str | None = None,
+        api_key: str | None = None,
+        ollama_base_url: str = "http://127.0.0.1:11434",
+        vertex_ai: bool = False,
+        google_project: str | None = None,
+        google_location: str = "us-central1",
     ) -> None:
         self.sessions = sessions
         self.mode = mode
@@ -134,45 +143,163 @@ class CoordinatorAgent:
         self.use_mcp = use_mcp
         self.circuit_breaker = circuit_breaker
         self.database = database
+        self.api_key = api_key
+        self.ollama_base_url = ollama_base_url.rstrip("/")
+        self.vertex_ai = vertex_ai
+        self.google_project = google_project
+        self.google_location = google_location
+
+    async def _route_with_model(self, message: str) -> tuple[bool, bool]:
+        """Ask the configured model which bounded local specialists should run."""
+        instruction = (
+            "Classifique a solicitação para um assistente de evento. Responda somente JSON válido, "
+            "sem markdown e sem comentários, exatamente neste formato: "
+            '{"schedule":true,"faq":false}. '
+            "Use somente booleanos JSON. schedule=true para agenda/palestras; "
+            "faq=true para regras, informações e políticas. Para pedidos ambíguos, "
+            "marque faq=true. "
+            "Não responda ao usuário nem invente dados. Pergunta: " + message[:2000]
+        )
+        if self.mode == "live":
+            if not self.api_key and not self.vertex_ai:
+                raise ProviderError("GOOGLE_API_KEY não está configurada para o coordenador.")
+
+            def invoke_google() -> str:
+                from google import genai
+                from google.genai import types
+
+                client = (
+                    genai.Client(
+                        vertexai=True,
+                        api_key=self.api_key,
+                        project=self.google_project,
+                        location=self.google_location,
+                    )
+                    if self.vertex_ai
+                    else genai.Client(api_key=self.api_key)
+                )
+                response = client.models.generate_content(
+                    model=self.model,
+                    contents=instruction,
+                    config=types.GenerateContentConfig(
+                        temperature=0,
+                        max_output_tokens=512,
+                    ),
+                )
+                parsed = getattr(response, "parsed", None)
+                if isinstance(parsed, dict):
+                    return json.dumps(parsed, ensure_ascii=False)
+                # Prefer the text convenience property, but some Vertex response
+                # candidates expose structured JSON only through content parts.
+                response_text = response.text or ""
+                if response_text.strip():
+                    return response_text
+                candidates = getattr(response, "candidates", None) or []
+                extracted: list[str] = []
+                diagnostics: list[str] = []
+                for candidate in candidates:
+                    content = getattr(candidate, "content", None)
+                    finish = getattr(candidate, "finish_reason", None)
+                    diagnostics.append(f"finish={finish}")
+                    for part in getattr(content, "parts", None) or []:
+                        text_value = getattr(part, "text", None)
+                        if text_value:
+                            extracted.append(str(text_value))
+                        else:
+                            diagnostics.append(
+                                "part="
+                                f"{type(part).__name__},function_call="
+                                f"{bool(getattr(part, 'function_call', None))}"
+                            )
+                if extracted:
+                    return "\n".join(extracted)
+                prompt_feedback = getattr(response, "prompt_feedback", None)
+                block_reason = getattr(prompt_feedback, "block_reason", None)
+                raise ProviderError(
+                    "Vertex não retornou texto de rota "
+                    f"(parsed={type(parsed).__name__},block={block_reason},{','.join(diagnostics)[:120]})."
+                )
+
+            raw = await asyncio.to_thread(invoke_google)
+        elif self.mode == "local":
+            body = json.dumps(
+                {
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": instruction}],
+                    "format": "json",
+                    "stream": False,
+                    "options": {"temperature": 0},
+                }
+            ).encode()
+            request = Request(
+                f"{self.ollama_base_url}/api/chat",
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+
+            def invoke_ollama() -> str:
+                with urlopen(request, timeout=self.timeout_seconds) as response:
+                    result = json.loads(response.read())
+                return str(result.get("message", {}).get("content", ""))
+
+            raw = await asyncio.to_thread(invoke_ollama)
+        else:
+            raise ProviderError("Provider de roteamento não suportado.")
+        try:
+            # Vertex may return valid structured content wrapped in a Markdown
+            # fence or with a short preamble despite response_mime_type. Extract
+            # the bounded JSON object before validating the route.
+            candidate = raw.strip().lstrip("\ufeff")
+            candidate = re.sub(r"```(?:json)?\s*|\s*```", "", candidate, flags=re.IGNORECASE)
+            decoder = json.JSONDecoder()
+            plan = None
+            for offset, char in enumerate(candidate):
+                if char != "{":
+                    continue
+                try:
+                    decoded, _ = decoder.raw_decode(candidate[offset:])
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(decoded, dict):
+                    plan = decoded
+                    break
+            if plan is None:
+                raise ValueError("Nenhum objeto JSON de rotas encontrado.")
+            if not isinstance(plan, dict):
+                raise ValueError("Plano deve ser objeto JSON.")
+
+            # Only two whitelisted intents are accepted. Normalize common
+            # Vertex/LLM JSON variations and do not delegate from free-form text.
+            def as_route(value: Any) -> bool:
+                if isinstance(value, bool):
+                    return value
+                if isinstance(value, str):
+                    normalized_value = value.strip().casefold()
+                    if normalized_value in {"true", "yes", "sim", "1"}:
+                        return True
+                    if normalized_value in {"false", "no", "não", "nao", "0"}:
+                        return False
+                if isinstance(value, int) and value in {0, 1}:
+                    return bool(value)
+                raise ValueError("Campo de rota inválido.")
+
+            schedule = as_route(plan.get("schedule", plan.get("agenda", False)))
+            faq = as_route(plan.get("faq", plan.get("policy", False)))
+            if not schedule and not faq:
+                faq = True
+            return schedule, faq
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            raise ProviderError(
+                "O modelo retornou plano de coordenação inválido "
+                f"({type(exc).__name__}: {str(exc)[:100]})."
+            ) from exc
 
     async def ask(self, message: str, history: list[str] | None = None) -> AgentResult:
-        # Routing and fallback are deterministic in offline mode. Live mode will
-        # later replace only the coordinator policy while preserving specialist ACLs.
         del history
         start = time.monotonic()
         budget = DelegationBudget()
         deadline = Deadline(self.timeout_seconds)
-        if self.mode in {"live", "local"}:
-            provider_name = "Gemini" if self.mode == "live" else "Ollama"
-            message = (
-                f"A arquitetura multi com {provider_name} ainda não está configurada. "
-                "Selecione agente único ou provider offline."
-            )
-            return AgentResult(
-                message,
-                [],
-                [],
-                None,
-                "live:multi",
-                {
-                    "request_id": f"multi-{time.time_ns()}",
-                    "mode": "live:multi",
-                    "model": self.model,
-                    "dataset_version": COORDINATOR_PROMPT_VERSION,
-                    "duration_ms": round((time.monotonic() - start) * 1000, 2),
-                    "tool_calls": 0,
-                    "delegations": 0,
-                    "tools": [],
-                    "input_tokens": None,
-                    "output_tokens": None,
-                    "status": "error",
-                    "raw_output": None,
-                    "validated": False,
-                    "fallback": True,
-                    "reservation_writes": 0,
-                },
-                error=f"multi_{self.mode}_unavailable",
-            )
         normalized = message.casefold()
         faq_phrases = (
             "como faço",
@@ -192,18 +319,65 @@ class CoordinatorAgent:
         )
         faq_intent = any(phrase in normalized for phrase in faq_phrases)
         has_schedule_intent = any(
-            word in normalized for word in ("agenda", "palestra", "sessão", "sessões", "após")
-        )
-        mixed_intent = has_schedule_intent and faq_intent and " e " in normalized
-        is_schedule = has_schedule_intent and (not faq_intent or mixed_intent)
-        is_faq = (
-            not is_schedule
-            or faq_intent
-            or any(
-                word in normalized
-                for word in ("inscrição", "acessibilidade", "alimentação", "cancelar")
+            word in normalized
+            for word in (
+                "agenda",
+                "palestra",
+                "sessão",
+                "sessões",
+                "após",
+                "sugira",
+                "sugerir",
+                "recomende",
+                "recomendar",
+                "iniciante",
+                "iniciantes",
+                "trilha",
+                "horário",
             )
         )
+        has_policy_intent = any(
+            word in normalized
+            for word in (
+                "regra",
+                "regras",
+                "política",
+                "politica",
+                "acessibilidade",
+                "cancelar",
+                "cancelamento",
+                "inscrição",
+                "inscricao",
+                "alimentação",
+                "alimentacao",
+            )
+        )
+        mixed_intent = has_schedule_intent and faq_intent and " e " in normalized
+        route_error: str | None = None
+        if self.mode in {"live", "local"}:
+            try:
+                async with asyncio.timeout(deadline.remaining()):
+                    is_schedule, is_faq = await self._route_with_model(message)
+            except Exception as exc:
+                # Safe deterministic recovery keeps the demo usable when model
+                # output is malformed. The model remains first choice; fallback
+                # only routes to read-only specialists using explicit intent.
+                is_schedule = has_schedule_intent
+                is_faq = has_policy_intent or faq_intent or not is_schedule
+                route_fallback = True
+                route_error = f"{type(exc).__name__}:{str(exc)[:100]}"
+            else:
+                route_fallback = False
+        else:
+            is_schedule = has_schedule_intent and (not faq_intent or mixed_intent)
+            is_faq = (
+                not is_schedule
+                or faq_intent
+                or any(
+                    word in normalized
+                    for word in ("inscrição", "acessibilidade", "alimentação", "cancelar")
+                )
+            )
         mcp: ScheduleMCPClient | None = None
         try:
             schedule_result: dict[str, Any] = {"session_ids": [], "answer": ""}
@@ -212,7 +386,10 @@ class CoordinatorAgent:
                     if self.circuit_breaker:
                         self.circuit_breaker.allow()
                     mcp = ScheduleMCPClient(
-                        timeout_seconds=min(self.timeout_seconds, 3.0),
+                        # Cloud Run scale-from-zero and low-CPU instances need
+                        # more than three seconds to start Python and initialize
+                        # the stdio MCP handshake. Keep within the request budget.
+                        timeout_seconds=min(self.timeout_seconds, 10.0),
                         database=self.database,
                         seed_catalog=self.database is None,
                     )
@@ -268,7 +445,10 @@ class CoordinatorAgent:
                     "status": "ok",
                     "raw_output": None,
                     "validated": True,
-                    "fallback": False,
+                    "fallback": route_fallback if self.mode in {"live", "local"} else False,
+                    "route_fallback_reason": (
+                        route_error if self.mode in {"live", "local"} else None
+                    ),
                     "reservation_writes": 0,
                     "circuit_state": (
                         self.circuit_breaker.state.value if self.circuit_breaker else "unconfigured"

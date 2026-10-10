@@ -1,6 +1,6 @@
 FROM python:3.11-slim@sha256:0dd364ba7e10242f07755449e3a3d0e35f9efd987952737b90def6709ab0c5ce AS build
 WORKDIR /build
-COPY requirements/py311-runtime.txt /tmp/requirements.txt
+COPY requirements/py311-agent.txt /tmp/requirements.txt
 RUN python -m pip install --no-cache-dir --require-hashes --prefix=/install -r /tmp/requirements.txt
 COPY pyproject.toml README.md ./
 COPY app ./app

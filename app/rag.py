@@ -1,4 +1,4 @@
-"""Local hybrid FAQ retrieval backed by PostgreSQL/pgvector and Ollama embeddings."""
+"""Hybrid FAQ retrieval backed by PostgreSQL/pgvector and Ollama or Gemini embeddings."""
 
 from __future__ import annotations
 
@@ -37,6 +37,8 @@ class RagMetrics:
 class OllamaEmbeddings:
     """Bounded, local-only embedding client with a small in-process text cache."""
 
+    provider = "ollama"
+
     def __init__(self, base_url: str, model: str = EMBEDDING_MODEL, timeout: int = 30) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -44,7 +46,8 @@ class OllamaEmbeddings:
         self.metrics = RagMetrics()
         self._cache: OrderedDict[str, list[float]] = OrderedDict()
 
-    def embed(self, text: str) -> list[float]:
+    def embed(self, text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> list[float]:
+        del task_type
         key = f"{self.model}:{text}"
         if key in self._cache:
             self.metrics.embedding_cache_hits += 1
@@ -84,10 +87,82 @@ class OllamaEmbeddings:
         return result
 
 
+class GeminiEmbeddings:
+    """Google Gemini embeddings with the same 768-dimensional pgvector contract."""
+
+    provider = "google"
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gemini-embedding-001",
+        output_dimension: int = EMBEDDING_DIMENSION,
+        *,
+        vertex_ai: bool = False,
+        project: str | None = None,
+        location: str = "us-central1",
+    ) -> None:
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY é obrigatória para embeddings Gemini.")
+        if output_dimension != EMBEDDING_DIMENSION:
+            raise ValueError("O índice pgvector atual exige embeddings de 768 dimensões.")
+        from google import genai
+        from google.genai import types
+
+        self.model = model
+        self.output_dimension = output_dimension
+        self.client = (
+            genai.Client(
+                vertexai=True,
+                api_key=api_key,
+                project=project,
+                location=location,
+            )
+            if vertex_ai
+            else genai.Client(api_key=api_key)
+        )
+        self.types = types
+        self.metrics = RagMetrics()
+        self._cache: OrderedDict[str, list[float]] = OrderedDict()
+
+    def embed(self, text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> list[float]:
+        key = f"{self.model}:{task_type}:{text}"
+        if key in self._cache:
+            self.metrics.embedding_cache_hits += 1
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        if len(text) > 8_000:
+            raise ValueError("Texto excede o limite de embedding (8000 caracteres).")
+        started = time.monotonic()
+        self.metrics.embedding_requests += 1
+        try:
+            response = self.client.models.embed_content(
+                model=self.model,
+                contents=text,
+                config=self.types.EmbedContentConfig(
+                    output_dimensionality=self.output_dimension,
+                    task_type=task_type,
+                ),
+            )
+            embeddings = response.embeddings or []
+            vector = embeddings[0].values if embeddings else None
+            if vector is None or len(vector) != self.output_dimension:
+                raise ValueError("Gemini retornou embedding com dimensão incompatível.")
+            result = [float(value) for value in vector]
+        except Exception:
+            self.metrics.embedding_failures += 1
+            raise
+        self.metrics.embedding_duration_ms += (time.monotonic() - started) * 1000
+        self._cache[key] = result
+        if len(self._cache) > 256:
+            self._cache.popitem(last=False)
+        return result
+
+
 class PgVectorFAQ:
     """Versioned vector index; every sync is transactional and removes stale chunks."""
 
-    def __init__(self, database_url: str, embeddings: OllamaEmbeddings) -> None:
+    def __init__(self, database_url: str, embeddings: OllamaEmbeddings | GeminiEmbeddings) -> None:
         self.database_url = database_url
         self.embeddings = embeddings
         self.metrics = RagMetrics()
@@ -121,7 +196,7 @@ class PgVectorFAQ:
                 "FROM faq_vector_index WHERE index_id='faq'"
             ).fetchone()
             expected = (
-                EMBEDDING_PROVIDER,
+                self.embeddings.provider,
                 self.embeddings.model,
                 EMBEDDING_VERSION,
                 EMBEDDING_DIMENSION,
@@ -159,7 +234,7 @@ class PgVectorFAQ:
                 "FROM faq_vector_index WHERE index_id='faq'"
             ).fetchone()
             expected = (
-                EMBEDDING_PROVIDER,
+                self.embeddings.provider,
                 self.embeddings.model,
                 EMBEDDING_VERSION,
                 EMBEDDING_DIMENSION,
@@ -177,7 +252,7 @@ class PgVectorFAQ:
             for chunk_id, chunk, digest in rows:
                 if existing.get(chunk_id) == digest:
                     continue
-                vector = self.embeddings.embed(chunk.text)
+                vector = self.embeddings.embed(chunk.text, task_type="RETRIEVAL_DOCUMENT")
                 connection.execute(
                     """INSERT INTO faq_vector_chunks VALUES
                     (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::vector,%s)
@@ -220,7 +295,7 @@ class PgVectorFAQ:
     def search(self, question: str, limit: int = 3) -> list[dict[str, object]]:
         started = time.monotonic()
         requests_before = self.embeddings.metrics.embedding_requests
-        vector = self.embeddings.embed(question)
+        vector = self.embeddings.embed(question, task_type="RETRIEVAL_QUERY")
         self.metrics.query_embeddings += (
             self.embeddings.metrics.embedding_requests - requests_before
         )

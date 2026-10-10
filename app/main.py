@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import secrets
 import time
 from contextlib import asynccontextmanager
@@ -47,15 +48,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     chat_sessions = ChatSessions(storage)
     vector_index = None
     if config.rag_mode == "hybrid":
-        from app.rag import OllamaEmbeddings, PgVectorFAQ
+        from app.rag import PgVectorFAQ
+
+        embeddings: Any
+        if config.embedding_provider == "google":
+            from app.rag import GeminiEmbeddings
+
+            embeddings = GeminiEmbeddings(
+                config.google_api_key or "",
+                config.embedding_model,
+                vertex_ai=config.google_vertex_ai,
+                project=config.google_cloud_project,
+                location=config.google_cloud_location,
+            )
+        else:
+            from app.rag import OllamaEmbeddings
+
+            embeddings = OllamaEmbeddings(config.ollama_embedding_base_url, config.embedding_model)
 
         vector_index = PgVectorFAQ(
             config.rag_database_url or "",
-            OllamaEmbeddings(config.ollama_embedding_base_url, config.ollama_embedding_model),
+            embeddings,
         )
         # Fail clearly at startup on unavailable/incompatible infrastructure; no silent stale index.
         vector_index.initialize()
-        vector_index.sync()
+        indexed_chunks = vector_index.sync()
+        logging.getLogger("eventops.rag").info(
+            "RAG semântico inicializado: provider=%s model=%s chunks=%d",
+            embeddings.provider,
+            embeddings.model,
+            indexed_chunks,
+        )
     configure_hybrid_index(vector_index)
 
     @asynccontextmanager
@@ -215,6 +238,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 timeout_seconds=config.agent_timeout_seconds,
                 circuit_breaker=mcp_breaker,
                 database=config.database_url or config.database.resolve(),
+                api_key=config.google_api_key,
+                ollama_base_url=config.ollama_base_url,
+                vertex_ai=config.google_vertex_ai,
+                google_project=config.google_cloud_project,
+                google_location=config.google_cloud_location,
             )
             if body.architecture == "multi"
             else make_agent(
@@ -227,6 +255,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 config.ollama_model,
                 provider_breaker,
                 config.ollama_context_length,
+                google_vertex_ai=config.google_vertex_ai,
+                google_project=config.google_cloud_project,
+                google_location=config.google_cloud_location,
             )
         )
         owner, history = chat_sessions.acquire(browser_session)

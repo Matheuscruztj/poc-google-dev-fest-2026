@@ -220,8 +220,18 @@ class OfflineProvider:
 
 
 class ADKProvider:
-    def __init__(self, api_key: str, model: str, timeout_seconds: int = 12) -> None:
+    def __init__(
+        self,
+        api_key: str | None,
+        model: str,
+        timeout_seconds: int = 12,
+        *,
+        vertex_ai: bool = False,
+        project: str | None = None,
+        location: str = "us-central1",
+    ) -> None:
         self.api_key, self.model, self.timeout_seconds = api_key, model, timeout_seconds
+        self.vertex_ai, self.project, self.location = vertex_ai, project, location
 
     async def respond(
         self, message: str, tools: DemoTools, history: list[str]
@@ -235,10 +245,39 @@ class ADKProvider:
             raise ProviderError("Instale o extra live com `pip install -e '.[agent]'`.") from exc
         import os
 
-        previous_key = os.environ.get("GOOGLE_API_KEY")
-        os.environ["GOOGLE_API_KEY"] = self.api_key
+        previous = {
+            name: os.environ.get(name)
+            for name in (
+                "GOOGLE_API_KEY",
+                "GOOGLE_GENAI_USE_VERTEXAI",
+                "GOOGLE_CLOUD_PROJECT",
+                "GOOGLE_CLOUD_LOCATION",
+            )
+        }
+        if self.vertex_ai:
+            os.environ.pop("GOOGLE_API_KEY", None)
+            os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
+            if self.project:
+                os.environ["GOOGLE_CLOUD_PROJECT"] = self.project
+            os.environ["GOOGLE_CLOUD_LOCATION"] = self.location
+        elif self.api_key:
+            os.environ["GOOGLE_API_KEY"] = self.api_key
         try:
-            agent = build_adk_agent(Agent, types, self.model, tools)
+            model_backend: Any = self.model
+            if self.vertex_ai:
+                from google import genai
+                from google.adk.models.google_llm import Gemini
+
+                model_backend = Gemini(
+                    model=self.model,
+                    client=genai.Client(
+                        vertexai=True,
+                        api_key=self.api_key,
+                        project=self.project,
+                        location=self.location,
+                    ),
+                )
+            agent = build_adk_agent(Agent, types, model_backend, tools)
             session_service = InMemorySessionService()
             runner = Runner(
                 agent=agent,
@@ -288,12 +327,19 @@ class ADKProvider:
         except ProviderError:
             raise
         except Exception as exc:
-            raise ProviderError(f"Falha no provider live ({type(exc).__name__}).") from exc
+            detail = str(getattr(exc, "message", "") or exc)
+            if self.api_key:
+                detail = detail.replace(self.api_key, "[redacted]")
+            detail = detail[:240]
+            code = getattr(exc, "code", None)
+            suffix = f" HTTP {code}: {detail}" if code is not None else f": {detail}"
+            raise ProviderError(f"Falha no provider live ({type(exc).__name__}){suffix}") from exc
         finally:
-            if previous_key is None:
-                os.environ.pop("GOOGLE_API_KEY", None)
-            else:
-                os.environ["GOOGLE_API_KEY"] = previous_key
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
 
 
 class SingleAgent:
@@ -573,11 +619,21 @@ def make_agent(
     ollama_model: str = "qwen2.5:3b",
     circuit_breaker: CircuitBreaker | None = None,
     ollama_context_length: int = 8192,
+    google_vertex_ai: bool = False,
+    google_project: str | None = None,
+    google_location: str = "us-central1",
 ) -> SingleAgent:
     if mode == "live":
-        if not api_key:
+        if not api_key and not google_vertex_ai:
             raise ValueError("O modo live exige GOOGLE_API_KEY.")
-        provider: AgentProvider = ADKProvider(api_key, model, timeout_seconds)
+        provider: AgentProvider = ADKProvider(
+            api_key,
+            model,
+            timeout_seconds,
+            vertex_ai=google_vertex_ai,
+            project=google_project,
+            location=google_location,
+        )
     elif mode == "local":
         provider = OllamaProvider(
             ollama_base_url, ollama_model, max(timeout_seconds, 60), ollama_context_length
@@ -594,7 +650,7 @@ def make_agent(
     )
 
 
-def build_adk_agent(agent_class: Any, genai_types: Any, model: str, tools: DemoTools) -> Any:
+def build_adk_agent(agent_class: Any, genai_types: Any, model: Any, tools: DemoTools) -> Any:
     return agent_class(
         name="eventops_single_agent",
         model=model,
@@ -606,4 +662,25 @@ def build_adk_agent(agent_class: Any, genai_types: Any, model: str, tools: DemoT
             max_output_tokens=700,
             response_mime_type="application/json",
         ),
+        output_schema={
+            "type": "OBJECT",
+            "properties": {
+                "answer": {"type": "STRING"},
+                "session_ids": {"type": "ARRAY", "items": {"type": "STRING"}},
+                "sources": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "document": {"type": "STRING"},
+                            "section": {"type": "STRING"},
+                            "excerpt": {"type": "STRING"},
+                        },
+                        "required": ["document", "section", "excerpt"],
+                    },
+                },
+                "reservation_proposal": {"type": "STRING", "nullable": True},
+            },
+            "required": ["answer", "session_ids", "sources", "reservation_proposal"],
+        },
     )

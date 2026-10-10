@@ -1,4 +1,4 @@
-"""SQLite persistence for the synthetic catalog and reservation runtime."""
+"""SQLite/PostgreSQL persistence for the synthetic catalog and reservation runtime."""
 
 from __future__ import annotations
 
@@ -133,11 +133,26 @@ class Storage:
         finally:
             sqlite_connection.close()
 
+    def begin_write(self, connection: Any) -> None:
+        """Start a write transaction with backend-appropriate locking semantics."""
+        connection.execute("BEGIN" if self.database_url else "BEGIN IMMEDIATE")
+
+    def is_busy_error(self, error: Exception) -> bool:
+        if self.database_url:
+            message = str(error).lower()
+            return isinstance(error, sqlite3.OperationalError) and (
+                "serializ" in message or "deadlock" in message
+            )
+        message = str(error).lower()
+        return isinstance(error, sqlite3.OperationalError) and any(
+            marker in message for marker in ("locked", "busy")
+        )
+
     def sync_sessions(self, records: list[dict[str, object]]) -> None:
         canonical = json.dumps(records, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         content_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         with self.connection() as connection:
-            connection.execute("BEGIN IMMEDIATE")
+            self.begin_write(connection)
             try:
                 previous = connection.execute(
                     "SELECT content_hash FROM catalog_state WHERE singleton=1"
