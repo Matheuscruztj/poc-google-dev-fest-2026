@@ -1,37 +1,91 @@
-# Runbook candidato: Cloud Run e Cloud SQL
+# Runbook de operação Cloud Run e Cloud SQL
 
-Este runbook descreve a preparação para publicação; nenhum projeto ou recurso Google foi criado. Cloud SQL PostgreSQL e a região `southamerica-east1` são candidatos, não decisões de provisionamento. Antes de publicar, confirmar projeto, região disponível, acesso da demo, estimativa de custo/quota, retenção, responsáveis e política de dados. A [integração Cloud Run/Cloud SQL](https://docs.cloud.google.com/sql/docs/postgres/connect-run) e os [preços do Cloud SQL](https://cloud.google.com/sql/pricing) devem ser consultados novamente na data da decisão.
+## Estado do projeto
 
-## Configuração e identidade
+Revisado em 10/10/2026. A implantação temporária foi publicada e validada com
+agentes Gemini single/multi, MCP stdio e RAG híbrido Cloud SQL/pgvector. O
+ambiente foi removido após os testes. Não há serviços de execução EventOps
+ativos; permanecem o projeto, billing, APIs habilitadas e alertas de orçamento.
+Este runbook reúne o estado atual, o perfil que foi exercitado, os comandos de
+recriação e validação e as orientações de custo e teardown.
 
-- Usar uma identidade de execução dedicada ao Cloud Run, com apenas os papéis exigidos pelo método de conexão escolhido e acesso ao segredo de conexão. A identidade de deploy fica separada.
-- Guardar `EVENTOPS_DATABASE_URL` no Secret Manager e referenciá-lo no serviço; não o inserir em imagem, arquivo de ambiente versionado, saída de shell, logs ou manifesto.
-- `GOOGLE_API_KEY` só será necessária quando a arquitetura Gemini live for implementada e autorizada para avaliação. O serviço ainda opera no modo offline/local configurado e não deve receber essa chave como parte desta etapa.
-- Definir `EVENTOPS_SEED_CATALOG=false` após o seed inicial explícito, `EVENTOPS_COOKIE_SECURE=true` sob HTTPS e origens permitidas específicas. O catálogo não deve ser sincronizado durante o startup concorrente de várias instâncias.
-- Sessões de demonstração, histórico limitado de chat e leases usam o banco compartilhado. Eles não representam autenticação de pessoas reais. A validação local do adapter não aprova operação cloud; definir política de acesso da demo antes de torná-la pública.
+## Recursos e configuração usados
 
-## Migration e publicação
+- Cloud Run `eventops-api`, região `us-central1`, 1 vCPU, 512 MiB, concorrência
+  8, timeout 60 s, escala 0–1 e invocação pública. Chat e mutações verificavam
+  origem e cookie de demonstração; não havia login de usuário.
+- Single e roteamento multi usavam Gemini 2.5 Flash via Vertex AI. O multi
+  delegava agenda pelo servidor MCP stdio no mesmo container.
+- Perfil híbrido opcional usava `gemini-embedding-001`, saída 768 dimensões,
+  Cloud SQL PostgreSQL 17 e pgvector. A aplicação cria o schema vetorial no
+  startup e sincroniza FAQ Markdown por hash.
+- A configuração de código do perfil híbrido agora usa PostgreSQL no Cloud SQL
+  para catálogo, sessões, histórico, confirmações, reservas e idempotência, além
+  do banco pgvector do FAQ. A implantação anterior validada ainda usava SQLite
+  efêmero para esses dados; é necessário novo deploy para exercitar a alteração.
+- `EVENTOPS_DATABASE_URL`, `EVENTOPS_RAG_DATABASE_URL` e credenciais de modelo
+  devem ser entregues por Secret Manager ou identidade Google apropriada.
+  Não registrar valores em state outputs, logs, `.env` versionado ou imagem.
 
-As migrations PostgreSQL estão em `app/migrations/NNNN_*.sql`, são aplicadas em transação e a versão está em `schema_meta`. Fazer backup/point-in-time recovery compatível com a política do projeto antes de qualquer alteração destrutiva. Publicar mudanças aditivas e compatíveis primeiro; remoção/renomeação de colunas exige estratégia expand/contract e uma nova imagem antes de remover schema antigo.
+As variáveis Terraform são identificadores/configuração (`project_id`, região,
+nomes, tag, origem e flag de RAG); **nenhuma variável declara segredo**. A
+senha PostgreSQL é gerada com `random_password`, mas seu valor e a URL resultante
+existem no state local do Terraform. O state e seus backups são segredos e não
+devem ir para Git ou ser enviados sem criptografia. O teardown desta sessão
+removeu esses arquivos locais depois de destruir os recursos.
 
-Antes do deploy:
+## Recriação
 
-1. Rodar `make lint typecheck test build postgres-check compose-check eval-offline` e completar E2E Playwright; guardar relatório e digest da imagem.
-2. Revisar migration SQL e snapshot/backup restaurável em ambiente de teste. Reproduzir falha em transação e confirmar rollback; nunca depender do rollback do schema após commit.
-3. Criar/validar conexão por Cloud SQL connector ou socket suportado pela configuração final, com TLS/identidade apropriados; a URL atual do adapter usa conexão TCP padrão e precisa ser adaptada/testada para o método escolhido.
-4. Publicar uma revisão inicialmente privada, com escala máxima baixa, health check e limites de timeout/conexão coerentes com o banco.
-5. Rodar smoke de agenda, FAQ, preview, confirmação, replay idempotente e disputa de capacidade antes de liberar acesso.
+Pré-requisitos: `gcloud`, Docker Engine e Terraform, com o projeto correto e
+billing habilitado. Os scripts não leem nem enviam `.env`; forneça credenciais
+por Secret Manager ou identidade Google. Para publicar a aplicação, execute
+`./scripts/cloud/cloud-up.sh`. O perfil
+econômico começa com RAG lexical. Para criar Cloud SQL e mudar o runtime para
+hybrid, ativar explicitamente `enable_managed_rag=true`. A instância deve ser
+tratada como temporária, sem backups, zonal e sem SLA. Não usar para dados reais.
 
-O startup do app aplica migrations pendentes. Por isso, usar credencial de banco com DDL apenas se a política aceitar esse privilégio no runtime. Para separar privilégio de migration do usuário de aplicação, mover a migration para um job de deploy e conectar o runtime com grants mínimos antes de produção.
+O deploy escreve a URL em `infra/terraform/service-url.txt`. Para consultas
+diretas, use `BASE_URL="$(cat infra/terraform/service-url.txt)"` e, por
+exemplo, `curl -fsS "$BASE_URL/health"` ou
+`curl -fsS "$BASE_URL/api/sessions?track=IA"`. Chat e mutações exigem cookie e
+header `Origin` compatíveis com a URL; o smoke automatizado cobre o fluxo de
+chat e reserva sintética.
 
-## Verificação e rollback
+Depois do deploy, execute `./scripts/cloud/cloud-smoke.sh`. Com RAG híbrido
+ativo, use `./scripts/cloud/cloud-rag-smoke.sh "$(cat infra/terraform/service-url.txt)"`.
+Cloud SQL `db-f1-micro` foi estimado em cerca de US$ 0,0117/h com disco de 10 GiB,
+antes de rede e embeddings. Confira as [tarifas atuais](https://cloud.google.com/sql/pricing);
+budget de R$ 5 é um alerta, não um teto universal.
 
-Após publicação, registrar região, revisão, digest, versão de schema, configuração não secreta e resultado G6. Confirmar persistência de uma reserva após nova instância/revisão e teste concorrente com conexões distintas. Conferir logs e métricas sem capturar tokens, cookies ou credenciais.
+Antes de expor a aplicação novamente:
 
-Em falha da aplicação, rotear tráfego para a revisão anterior se o schema continuar compatível. Não reverter schema automaticamente: restaurar backup apenas mediante procedimento aprovado e avaliação de perda de dados. Se houver incompatibilidade de migration, interromper rollout, preservar evidências e seguir plano de recuperação do banco.
+1. Confirmar IAM mínimo para runtime e deploy em identidades separadas.
+2. Criar/usar secrets com acesso restrito; rotacionar credenciais que tenham
+   sido expostas e evitar impressões de state/variáveis.
+3. Manter Cloud Run público somente para a demo; definir origem permitida,
+   cookie seguro, escala e limites de requisição.
+4. Validar health, agenda, FAQ, single, multi/MCP e, se híbrido, smoke de RAG.
+5. Conferir custo e logs no projeto após o smoke.
 
-## Custo e remoção
+## Alertas e rollback
 
-Configurar orçamento e alertas antes da criação. Escala zero reduz uso do Cloud Run, mas não implica custo zero de banco, armazenamento, logs, registry, backups ou rede; confirmar a tarifa da região e dimensionamento no cálculo aprovado. Revisar orçamento e quotas após smoke e antes de abrir tráfego.
+O budget de projeto de R$ 5 notifica em 50%, 80% e 100%. O spend cap de R$ 5
+atinge Cloud Run dentro do filtro configurado. Alertas e cap não são um teto
+universal e não interrompem automaticamente Vertex AI, armazenamento ou todos
+os serviços.
 
-Para encerrar, exportar evidências não sensíveis, inventariar serviço, instância, backups, secrets, imagens e logs, e decidir retenção dos dados de demonstração. Os comandos de remoção devem apontar somente aos IDs do inventário e exigir revisão humana antes de apagar banco ou backups. Este runbook não executa criação, deploy, exclusão ou cobrança.
+Em uma futura revisão, retornar para uma revisão Cloud Run anterior só é seguro
+se o schema continuar compatível. O armazenamento relacional pode preservar os
+dados entre revisões quando configurado por `EVENTOPS_DATABASE_URL`; não aplicar
+rollback de schema automaticamente.
+
+## Encerramento e verificação
+
+Execute `./scripts/cloud/cloud-down.sh`. O script remove a instância Cloud SQL antes
+do destroy Terraform para suportar operações longas, apaga os recursos
+EventOps (Cloud Run, registry, secrets e identidades), confirma que o alerta
+permanece e remove state local contendo credenciais. O projeto e as APIs
+habilitadas são mantidos. Para uma API key criada separadamente, informe seu
+resource name em `EVENTOPS_API_KEY_RESOURCE`; essa opção pula a checagem de uso
+recente ao revogar a chave. Depois, confira também os recursos fora do inventário
+Terraform no Console se o projeto tiver sido usado por outras aplicações.
