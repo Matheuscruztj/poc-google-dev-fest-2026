@@ -16,7 +16,10 @@ import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from scripts.checks.candidate import candidate_digest
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+from scripts.checks.candidate import candidate_digest  # noqa: E402
 
 
 def free_port() -> int:

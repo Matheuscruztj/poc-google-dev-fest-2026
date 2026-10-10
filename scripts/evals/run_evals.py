@@ -16,8 +16,6 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from scripts.checks.candidate import candidate_digest  # noqa: E402
-
 from app.agent import PROMPT_VERSION, make_agent  # noqa: E402
 from app.evaluators import evaluate_case, execute_case_state, load_cases, run_case  # noqa: E402
 from app.faq import load_chunks  # noqa: E402
@@ -27,6 +25,7 @@ from evals.harness import (  # noqa: E402
     exercise_mcp_process_failures,
     single_agent_for_case,
 )
+from scripts.checks.candidate import candidate_digest  # noqa: E402
 
 
 def sha256(path: Path) -> str:

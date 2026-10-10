@@ -28,7 +28,7 @@ lint:
 	npm run lint
 
 typecheck:
-	$(PYTHON) -m mypy app mcp_server scripts
+	$(PYTHON) -m mypy --explicit-package-bases app mcp_server scripts
 
 test:
 	$(PYTHON) -m pytest -m 'not e2e' --cov=app.schedule --cov=app.faq --cov=app.reservations --cov=app.storage --cov-branch --cov-report=term-missing --cov-report=xml

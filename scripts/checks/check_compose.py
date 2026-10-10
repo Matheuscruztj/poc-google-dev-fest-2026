@@ -7,13 +7,15 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import time
 import urllib.request
 from pathlib import Path
 
-from scripts.checks.candidate import candidate_digest
-
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+from scripts.checks.candidate import candidate_digest  # noqa: E402
 
 
 def free_port() -> int:

@@ -16,8 +16,6 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from scripts.checks.candidate import candidate_digest  # noqa: E402
-
 from app.agent import PROMPT_VERSION, make_agent  # noqa: E402
 from app.agents.coordinator import COORDINATOR_PROMPT_VERSION, CoordinatorAgent  # noqa: E402
 from app.data_validation import load_session_seed  # noqa: E402
@@ -30,6 +28,7 @@ from evals.harness import (  # noqa: E402
     multi_failure_result,
     single_agent_for_case,
 )
+from scripts.checks.candidate import candidate_digest  # noqa: E402
 
 
 def digest(path: Path) -> str:

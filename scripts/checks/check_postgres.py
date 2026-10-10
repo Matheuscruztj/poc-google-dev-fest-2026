@@ -21,8 +21,12 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.chat_sessions import ChatSessionError, ChatSessions  # noqa: E402
 from app.config import Settings  # noqa: E402
 from app.data_validation import load_session_seed  # noqa: E402
-from app.main import create_app  # noqa: E402
-from app.reservations import ReservationError, ReservationService  # noqa: E402
+from app.main import COOKIE_NAME, create_app  # noqa: E402
+from app.reservations import (  # noqa: E402
+    ReservationError,
+    ReservationService,
+    token_hash,  # noqa: E402
+)
 from app.storage import Storage  # noqa: E402
 
 
@@ -121,6 +125,7 @@ def main() -> int:
         with TestClient(create_app(settings), headers={"origin": "http://testserver"}) as client:
             assert len(client.get("/api/sessions").json()["sessions"]) == 20
             preview = client.post("/api/reservations/preview", json={"session_id": "S02"})
+            assert preview.status_code == 200
             payload = {
                 "session_id": "S02",
                 "confirmation_token": preview.json()["confirmation_token"],
@@ -130,10 +135,15 @@ def main() -> int:
             replay = client.post("/api/reservations", json=payload).json()
             assert replay["receipt_id"] == receipt["receipt_id"] and replay["replayed"] is True
             assert client.get("/api/sessions").status_code == 200
+            demo_cookie = client.cookies.get(COOKIE_NAME)
+            assert demo_cookie is not None
+            demo_context = storage.demo_session_context(token_hash(demo_cookie), time.time())
+            assert demo_context is not None
+            demo_user = demo_context[1]
         with repeat_storage.connection() as connection:
             persisted_receipt = connection.execute(
                 "SELECT receipt_id FROM reservations WHERE user_id=? AND session_id=?",
-                ("participante-demo", "S02"),
+                (demo_user, "S02"),
             ).fetchone()
         assert persisted_receipt is not None
 
