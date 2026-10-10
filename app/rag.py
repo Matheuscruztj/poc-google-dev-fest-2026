@@ -94,7 +94,7 @@ class GeminiEmbeddings:
 
     def __init__(
         self,
-        api_key: str,
+        api_key: str | None,
         model: str = "gemini-embedding-001",
         output_dimension: int = EMBEDDING_DIMENSION,
         *,
@@ -102,7 +102,7 @@ class GeminiEmbeddings:
         project: str | None = None,
         location: str = "us-central1",
     ) -> None:
-        if not api_key:
+        if not api_key and not vertex_ai:
             raise ValueError("GOOGLE_API_KEY é obrigatória para embeddings Gemini.")
         if output_dimension != EMBEDDING_DIMENSION:
             raise ValueError("O índice pgvector atual exige embeddings de 768 dimensões.")
@@ -111,16 +111,11 @@ class GeminiEmbeddings:
 
         self.model = model
         self.output_dimension = output_dimension
-        self.client = (
-            genai.Client(
-                vertexai=True,
-                api_key=api_key,
-                project=project,
-                location=location,
-            )
-            if vertex_ai
-            else genai.Client(api_key=api_key)
-        )
+        if vertex_ai:
+            self.client = genai.Client(vertexai=True, project=project, location=location)
+        else:
+            assert api_key is not None
+            self.client = genai.Client(api_key=api_key)
         self.types = types
         self.metrics = RagMetrics()
         self._cache: OrderedDict[str, list[float]] = OrderedDict()

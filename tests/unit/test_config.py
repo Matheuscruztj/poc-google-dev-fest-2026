@@ -61,6 +61,14 @@ def test_live_mode_requires_key_but_offline_does_not(
     monkeypatch.setenv("EVENTOPS_AGENT_MODE", "live")
     with pytest.raises(ValueError, match="GOOGLE_API_KEY"):
         Settings.from_env()
+    monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
+    monkeypatch.setenv("EVENTOPS_RAG_MODE", "hybrid")
+    monkeypatch.setenv("EVENTOPS_RAG_DATABASE_URL", "postgresql://user:pass@localhost/db")
+    monkeypatch.setenv("EVENTOPS_EMBEDDING_PROVIDER", "google")
+    vertex_settings = Settings.from_env()
+    assert vertex_settings.google_vertex_ai is True
+    assert vertex_settings.google_api_key is None
+    assert vertex_settings.embedding_provider == "google"
     monkeypatch.setenv("EVENTOPS_AGENT_MODE", "local")
     assert Settings.from_env().agent_mode == "local"
 

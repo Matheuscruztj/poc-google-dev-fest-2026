@@ -30,11 +30,10 @@ resource "google_service_account" "runtime" {
   display_name = "EventOps Cloud Run runtime"
 }
 
-resource "google_secret_manager_secret_iam_member" "gemini_key_access" {
-  project   = var.project_id
-  secret_id = "eventops-google-api-key"
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.runtime.email}"
+resource "google_project_iam_member" "runtime_vertex_ai" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.runtime.email}"
 }
 
 resource "google_sql_database_instance" "rag" {
@@ -167,6 +166,10 @@ resource "google_cloud_run_v2_service" "api" {
   deletion_protection = false
   ingress             = "INGRESS_TRAFFIC_ALL"
 
+  scaling {
+    min_instance_count = 0
+  }
+
   template {
     execution_environment = "EXECUTION_ENVIRONMENT_GEN1"
     service_account       = google_service_account.runtime.email
@@ -206,15 +209,6 @@ resource "google_cloud_run_v2_service" "api" {
       env {
         name  = "GOOGLE_GENAI_USE_VERTEXAI"
         value = "true"
-      }
-      env {
-        name = "GOOGLE_API_KEY"
-        value_source {
-          secret_key_ref {
-            secret  = "eventops-google-api-key"
-            version = "latest"
-          }
-        }
       }
       env {
         name  = "GOOGLE_CLOUD_PROJECT"
@@ -305,7 +299,7 @@ resource "google_cloud_run_v2_service" "api" {
 
   depends_on = [
     google_project_service.apis,
-    google_secret_manager_secret_iam_member.gemini_key_access,
+    google_project_iam_member.runtime_vertex_ai,
     google_sql_database_instance.rag,
     google_sql_database.rag,
     google_sql_database.app,

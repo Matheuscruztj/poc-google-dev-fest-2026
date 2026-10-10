@@ -16,6 +16,8 @@ dist/
 build/
 *.egg-info/
 reports/
+infra/terraform/terraform.tfstate*
+infra/terraform/service-url.txt
 coverage.xml
 coverage.json
 node_modules/

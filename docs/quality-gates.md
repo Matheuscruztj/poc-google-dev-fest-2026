@@ -9,6 +9,15 @@ passou: 129 testes sem navegador, três E2E, 40/40 evals, lint/tipos, build e
 smoke Compose incluindo histórico após reinício. PostgreSQL local e comparação
 offline de três rodadas também passaram; evidências em `pendencias.md`.
 
+**Validação remota (2026-10-10):** Terraform recriou Cloud Run e Cloud SQL
+PostgreSQL 17/pgvector em `us-central1`. Cloud smoke aprovou health, agenda,
+FAQ, Gemini single, coordenador multi/MCP, preview/confirmação de reserva e
+RAG semântico (fonte `acessibilidade.md#Recursos`, score 1.0). A service
+account runtime usa ADC para Vertex AI e Cloud SQL. O runbook registra a URL e
+os comandos de teardown. A instância Cloud SQL permanece ativa e faturável.
+O `make pre-push` local passou com 140 testes, três E2E, eval offline 40/40,
+build e smoke Compose; `make postgres-check` também passou.
+
 **Evidência histórica anterior (2026-10-09):** Na revisão anterior, Ruff, formatação, mypy, `make test` (115 testes), `make eval-offline` (40/40) e `make eval-compare` (40/40 em cada arquitetura nas três rodadas) passaram. Comparativo daquela revisão: `reports/20261009T040950Z-53dd5e96/`. Naquele momento, a execução completa de `make pre-push` ainda precisava ser repetida; ainda faltam live Gemini, retry/breaker de providers, job de migrations com credencial separada, Cloud SQL real e CI remoto. A validação PostgreSQL local descartável anterior passou. Para limitações funcionais atuais, consulte [pendências](pendencias.md).
 
 Gate é um conjunto de critérios que precisa passar para concluir a wave. Os gates acumulam: W2 exige os gates anteriores e os novos. Relatórios mostram `passed`, `failed`, `not_run` ou `not_applicable` com justificativa; somente os gates exigidos e aprovados autorizam concluir a wave.

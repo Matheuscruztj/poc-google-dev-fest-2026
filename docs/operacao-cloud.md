@@ -2,29 +2,35 @@
 
 ## Estado do projeto
 
-Revisado em 10/10/2026. A implantação temporária foi publicada e validada com
-agentes Gemini single/multi, MCP stdio e RAG híbrido Cloud SQL/pgvector. O
-ambiente foi removido após os testes. Não há serviços de execução EventOps
-ativos; permanecem o projeto, billing, APIs habilitadas e alertas de orçamento.
-Este runbook reúne o estado atual, o perfil que foi exercitado, os comandos de
-recriação e validação e as orientações de custo e teardown.
+Revisado em 10/10/2026. A infraestrutura temporária foi recriada com Terraform
+e está ativa em `us-central1`: Cloud Run `eventops-api` e Cloud SQL
+`eventops-rag-test` (`db-f1-micro`). A URL atual é
+`https://eventops-api-w4fiqopm2a-uc.a.run.app`. Health, agenda, FAQ, Gemini
+single/multi, MCP stdio, reserva e RAG semântico foram validados. O Cloud SQL
+gera custo enquanto permanecer ativo; execute o teardown ao terminar a demo.
+Este runbook registra a configuração, os comandos de operação e as orientações
+de custo e teardown.
 
 ## Recursos e configuração usados
 
 - Cloud Run `eventops-api`, região `us-central1`, 1 vCPU, 512 MiB, concorrência
   8, timeout 60 s, escala 0–1 e invocação pública. Chat e mutações verificavam
   origem e cookie de demonstração; não havia login de usuário.
-- Single e roteamento multi usavam Gemini 2.5 Flash via Vertex AI. O multi
-  delegava agenda pelo servidor MCP stdio no mesmo container.
+- Single, roteamento multi e embeddings usam Gemini 2.5 Flash e
+  `gemini-embedding-001` via Vertex AI, autenticados pela service account
+  runtime. O multi delega agenda pelo servidor MCP stdio no mesmo container.
 - Perfil híbrido opcional usava `gemini-embedding-001`, saída 768 dimensões,
   Cloud SQL PostgreSQL 17 e pgvector. A aplicação cria o schema vetorial no
   startup e sincroniza FAQ Markdown por hash.
-- A configuração de código do perfil híbrido agora usa PostgreSQL no Cloud SQL
-  para catálogo, sessões, histórico, confirmações, reservas e idempotência, além
-  do banco pgvector do FAQ. A implantação anterior validada ainda usava SQLite
-  efêmero para esses dados; é necessário novo deploy para exercitar a alteração.
-- `EVENTOPS_DATABASE_URL`, `EVENTOPS_RAG_DATABASE_URL` e credenciais de modelo
-  devem ser entregues por Secret Manager ou identidade Google apropriada.
+- O deploy de 10/10 usa PostgreSQL gerenciado também para catálogo, sessões,
+  histórico, confirmações, reservas e idempotência. A service account runtime
+  tem `roles/cloudsql.client`, `roles/aiplatform.user` e acesso apenas aos
+  secrets de conexão.
+- A configuração de código do perfil híbrido usa PostgreSQL no Cloud SQL para
+  catálogo, sessões, histórico, confirmações, reservas e idempotência, além do
+  banco pgvector do FAQ.
+- `EVENTOPS_DATABASE_URL` e `EVENTOPS_RAG_DATABASE_URL` são entregues pelo
+  Secret Manager; chamadas Vertex AI usam a identidade Google do runtime.
   Não registrar valores em state outputs, logs, `.env` versionado ou imagem.
 
 As variáveis Terraform são identificadores/configuração (`project_id`, região,

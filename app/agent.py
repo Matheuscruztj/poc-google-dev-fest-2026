@@ -272,7 +272,6 @@ class ADKProvider:
                     model=self.model,
                     client=genai.Client(
                         vertexai=True,
-                        api_key=self.api_key,
                         project=self.project,
                         location=self.location,
                     ),

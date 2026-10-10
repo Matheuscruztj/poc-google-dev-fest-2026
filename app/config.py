@@ -106,7 +106,7 @@ class Settings:
         embedding_model = embedding_model_value.strip()
         if not embedding_model or len(embedding_model) > 128:
             raise ValueError("OLLAMA_EMBEDDING_MODEL deve conter de 1 a 128 caracteres.")
-        if embedding_provider == "google" and not api_key:
+        if embedding_provider == "google" and not api_key and not google_vertex_ai:
             raise ValueError("Embeddings Google exigem GOOGLE_API_KEY configurada.")
         if rag_mode == "hybrid" and not rag_database_url:
             raise ValueError("EVENTOPS_RAG_MODE=hybrid exige EVENTOPS_RAG_DATABASE_URL.")

@@ -105,7 +105,7 @@ Para uma origem servida em outro host/porta, defina `EVENTOPS_ALLOWED_ORIGINS` c
 
 Não há login real, reserva real, pagamentos nem calendário de terceiros. Agenda e FAQ são determinísticos; o chat identifica os modos offline, Ollama local e Gemini live.
 
-Para publicar, validar e encerrar a API temporária no Cloud Run, use o [runbook Cloud](docs/operacao-cloud.md), que reúne deploy, smoke, arquitetura validada, custos e teardown. A infraestrutura EventOps foi removida após a validação de 10/10/2026; o projeto e o alerta de orçamento foram mantidos.
+Para publicar, validar e encerrar a API temporária no Cloud Run, use o [runbook Cloud](docs/operacao-cloud.md), que reúne deploy, smoke, arquitetura validada, custos e teardown. A infraestrutura foi recriada e validada em 10/10/2026 e está ativa; Cloud SQL gera custo enquanto permanecer ligado.
 
 ## Verificações
 

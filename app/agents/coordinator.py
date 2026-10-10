@@ -171,7 +171,6 @@ class CoordinatorAgent:
                 client = (
                     genai.Client(
                         vertexai=True,
-                        api_key=self.api_key,
                         project=self.google_project,
                         location=self.google_location,
                     )
